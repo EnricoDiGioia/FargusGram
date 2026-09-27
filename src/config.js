@@ -11,9 +11,9 @@
 
 const env = import.meta.env ?? {};
 
-export const SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://SEU-PROJETO.supabase.co';
+export const SUPABASE_URL = env.VITE_SUPABASE_URL || 'https://vhiagccrtqxizserfdzm.supabase.co/rest/v1/';
 
-export const SUPABASE_KEY = env.VITE_SUPABASE_KEY || 'COLE-AQUI-A-CHAVE-PUBLICA';
+export const SUPABASE_KEY = env.VITE_SUPABASE_KEY || 'sb_publishable_YvM0xKvUvhg3zlMzLyNpZw_i8jiyizN';
 
 // Nome que aparece no app
 export const APP_NAME = 'FargusGram';
