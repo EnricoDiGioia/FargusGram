@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#150f2c"/><stop offset="1" stop-color="#05040a"/></linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5"><stop offset="0" stop-color="#8b5cf6" stop-opacity="0.5"/><stop offset="0.6" stop-color="#6d28d9" stop-opacity="0.12"/><stop offset="1" stop-color="#6d28d9" stop-opacity="0"/></radialGradient>
+    <linearGradient id="rift" x1="0" y1="48" x2="48" y2="0" gradientUnits="userSpaceOnUse"><stop offset="0.18" stop-color="#22d3ee"/><stop offset="0.52" stop-color="#8b5cf6"/><stop offset="0.86" stop-color="#e879f9"/></linearGradient>
+    <filter id="blur" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.2"/></filter>
+  </defs>
+  <rect width="64" height="64" rx="14" fill="url(#bg)"/>
+  <circle cx="32" cy="32" r="26.88" fill="url(#glow)"/>
+  <g transform="translate(32 32) scale(0.925) translate(-24 -24)">
+    <g filter="url(#blur)" opacity="0.85">
+    <circle cx="24" cy="24" r="16.5" fill="none" stroke="url(#rift)" stroke-width="4.5"/>
+    <path d="M27.5 4.5 L20 21.5 L28.5 25.5 L20.5 43.5" fill="none" stroke="url(#rift)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/></g>
+    
+    <circle cx="24" cy="24" r="16.5" fill="none" stroke="url(#rift)" stroke-width="4.5"/>
+    <path d="M27.5 4.5 L20 21.5 L28.5 25.5 L20.5 43.5" fill="none" stroke="url(#rift)" stroke-width="4.2" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+</svg>

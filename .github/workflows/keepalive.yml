@@ -1,0 +1,21 @@
+# O plano grátis do Supabase pausa o projeto depois de 7 dias sem uso.
+# Este robô faz uma consulta a cada 3 dias para ele continuar acordado.
+name: Manter o Supabase acordado
+
+on:
+  schedule:
+    - cron: '17 9 */3 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+      - run: node scripts/keepalive.mjs

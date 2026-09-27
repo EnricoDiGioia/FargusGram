@@ -1,0 +1,93 @@
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from 'react';
+import { supabase, isConfigured } from '../lib/supabase';
+import * as api from '../lib/api';
+import { local, pageCache } from '../lib/storage';
+
+const SessionContext = createContext(null);
+
+export function SessionProvider({ children }) {
+  const [session, setSession] = useState(isConfigured ? undefined : null); // undefined = carregando
+  const [me, setMe] = useState(undefined); // undefined = carregando; null = sem acesso
+  const [meError, setMeError] = useState(null);
+  const [activeId, setActiveId] = useState(() => local.get('fg-active'));
+
+  useEffect(() => {
+    if (!isConfigured) return;
+    let alive = true;
+    supabase.auth.getSession().then(({ data }) => alive && setSession(data.session ?? null));
+    const { data } = supabase.auth.onAuthStateChange((_event, s) => {
+      setSession(s ?? null);
+    });
+    return () => {
+      alive = false;
+      data.subscription.unsubscribe();
+    };
+  }, []);
+
+  const uid = session?.user?.id ?? null;
+
+  const refreshMe = useCallback(async () => {
+    if (!uid) return null;
+    try {
+      const data = await api.me();
+      setMe(data ?? null);
+      setMeError(null);
+      return data;
+    } catch (e) {
+      setMeError(api.errorMessage(e));
+      return null;
+    }
+  }, [uid]);
+
+  useEffect(() => {
+    if (session === undefined) return;
+    if (!uid) {
+      setMe(null);
+      pageCache.clear();
+      return;
+    }
+    setMe(undefined);
+    refreshMe();
+  }, [uid, session === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const characters = useMemo(() => me?.characters ?? [], [me]);
+  const active = characters.find((c) => c.id === activeId) || characters[0] || null;
+
+  const setActive = useCallback((id) => {
+    local.set('fg-active', id);
+    setActiveId(id);
+    window.scrollTo(0, 0);
+  }, []);
+
+  const patchCharacter = useCallback((c) => {
+    setMe((m) => (m ? { ...m, characters: m.characters.map((x) => (x.id === c.id ? { ...x, ...c } : x)) } : m));
+  }, []);
+
+  const signOut = useCallback(async () => {
+    await api.auth.signOut();
+    local.set('fg-active', null);
+    pageCache.clear();
+    setMe(null);
+  }, []);
+
+  const value = {
+    session,
+    uid,
+    me,
+    meError,
+    characters,
+    active,
+    isAdmin: !!me?.is_admin,
+    setActive,
+    refreshMe,
+    patchCharacter,
+    signOut,
+    isMine: (characterId) => characters.some((c) => c.id === characterId),
+  };
+
+  return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
+}
+
+export function useSession() {
+  return useContext(SessionContext);
+}
