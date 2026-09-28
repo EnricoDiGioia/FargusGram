@@ -43,13 +43,16 @@ export function animateIn(el, kind, fadeOnly = false) {
 // tela anterior, para saber de onde a pessoa veio
 let lastPath = null;
 
+// stories e destaques abertos em tela cheia (não conta criar/editar destaque)
+const isViewer = (p) => p.startsWith('/stories/') || (/^\/destaques\/[^/]+$/.test(p) && p !== '/destaques/novo');
+
 function kindFor(navType, path, prev, profilePath, back) {
   if (prev === null) return 'fade'; // app acabou de abrir
-  if (prev.startsWith('/stories/')) return 'fade'; // fechando os stories
-  if (path.startsWith('/stories/')) return navType === 'POP' ? 'fade' : 'zoom';
+  if (isViewer(prev)) return 'fade'; // fechando os stories ou um destaque
+  if (isViewer(path)) return navType === 'POP' ? 'fade' : 'zoom';
   if (navType === 'POP' || back) return 'back';
   if (navType === 'REPLACE') return 'fade';
-  if (path.startsWith('/criar/')) return 'up';
+  if (path.startsWith('/criar/') || path === '/destaques/novo') return 'up';
   if (path === '/' || path === '/explorar' || path === '/atividade' || path === profilePath) return 'fade';
   return 'forward';
 }

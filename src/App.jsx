@@ -39,6 +39,7 @@ const CreateStory = lazy(() => import('./pages/CreateStory'));
 const StoryViewer = lazy(() => import('./pages/StoryViewer'));
 const EditPost = lazy(() => import('./pages/EditPost'));
 const Admin = lazy(() => import('./pages/Admin'));
+const HighlightEditor = lazy(() => import('./pages/HighlightEditor'));
 
 // Avisa quando existe uma versão nova do app publicada
 function UpdateNotice() {
@@ -195,11 +196,12 @@ function Shell() {
 const screen = (el, { fadeOnly = false } = {}) => <Screen fadeOnly={fadeOnly}>{el}</Screen>;
 
 function AppRoutes() {
-  const { characters } = useSession();
+  const { characters, can } = useSession();
 
   useEffect(() => {
-    // limpa stories vencidos dos meus personagens (libera espaço no Storage)
-    api.cleanupExpiredStories(characters.map((c) => c.id)).catch(() => {});
+    // limpa stories vencidos dos meus personagens (libera espaço no Storage);
+    // com destaques, os vencidos ficam 30 dias no arquivo antes de sair
+    api.cleanupExpiredStories(characters.map((c) => c.id), { archive: can('destaques') }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -233,6 +235,9 @@ function AppRoutes() {
           <Route path="criar/post" element={screen(<CreatePost />)} />
           <Route path="criar/story" element={screen(<CreateStory />)} />
           <Route path="stories/:characterId" element={screen(<StoryViewer />)} />
+          <Route path="destaques/novo" element={screen(<HighlightEditor />)} />
+          <Route path="destaques/:id/editar" element={screen(<HighlightEditor />)} />
+          <Route path="destaques/:highlightId" element={screen(<StoryViewer mode="highlight" />)} />
           <Route path="cadastro" element={<Navigate to="/" replace />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>

@@ -86,6 +86,8 @@ export function SessionProvider({ children }) {
     patchCharacter,
     signOut,
     isMine: (characterId) => characters.some((c) => c.id === characterId),
+    // recursos que dependem de atualização do banco ("destaques", "notas")
+    can: (feature) => Array.isArray(me?.features) && me.features.includes(feature),
   };
 
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

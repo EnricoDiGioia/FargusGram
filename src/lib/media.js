@@ -333,6 +333,13 @@ export async function renderStory({ img, crop, gradient, filterId, texts, sticke
   }
 
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.86);
+  // miniatura (capas dos destaques e arquivo): 1/4 do tamanho, uns 15 KB
+  const t = newCanvas(STORY_W / 4, STORY_H / 4);
+  const tctx = t.getContext('2d');
+  tctx.imageSmoothingQuality = 'high';
+  tctx.drawImage(canvas, 0, 0, t.width, t.height);
+  const thumb = await canvasToBlob(t, 'image/jpeg', 0.8);
+  releaseCanvas(t);
   releaseCanvas(canvas);
-  return { blob, width: STORY_W, height: STORY_H };
+  return { blob, thumb, width: STORY_W, height: STORY_H };
 }

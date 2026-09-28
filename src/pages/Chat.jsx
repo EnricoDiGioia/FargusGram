@@ -493,7 +493,13 @@ export default function Chat() {
                     {m.story_reply && (
                       <div className="msg__story">
                         <span className="muted">{mine ? 'Você respondeu ao story' : 'Respondeu ao seu story'}</span>
-                        {m.story && !m.story.expired && <img src={mediaUrl(m.story.path)} alt="" loading="lazy" />}
+                        {m.story && !m.story.expired && <img src={mediaUrl(m.story.thumb_path || m.story.path)} alt="" loading="lazy" />}
+                      </div>
+                    )}
+                    {m.kind === 'note_reply' && (
+                      <div className="msg__note">
+                        <span className="muted">{mine ? 'Você respondeu à nota' : 'Respondeu à sua nota'}</span>
+                        {m.note_body && <span className="msg__note-bubble">{m.note_body}</span>}
                       </div>
                     )}
                     {m.kind === 'post' && <PostShare post={m.post} />}

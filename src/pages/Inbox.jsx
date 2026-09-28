@@ -4,6 +4,7 @@ import { SquarePen, Search, Send } from 'lucide-react';
 import { TopBar, BackButton, IconButton, Spinner, EmptyState, ErrorBox, Handle, Button } from '../components/ui';
 import Avatar from '../components/Avatar';
 import PullToRefresh from '../components/PullToRefresh';
+import { NotesRow } from '../components/Notes';
 import { useSession } from '../state/session';
 import { useUnread } from '../state/unread';
 import { useAsync, useInterval } from '../lib/hooks';
@@ -41,15 +42,17 @@ function preview(conv, meId) {
   if (lm.kind === 'post') t = mine ? 'Você enviou uma publicação' : 'Enviou uma publicação';
   else if (lm.kind === 'media') t = mine ? 'Você enviou uma foto' : 'Enviou uma foto';
   else if (lm.is_story_reply) t = mine ? `Você respondeu ao story: ${lm.body}` : `Respondeu ao seu story: ${lm.body}`;
+  else if (lm.is_note_reply) t = mine ? `Você respondeu à nota: ${lm.body}` : `Respondeu à sua nota: ${lm.body}`;
   else t = mine ? `Você: ${lm.body}` : lm.body;
   return t;
 }
 
 export default function Inbox() {
-  const { active } = useSession();
+  const { active, can } = useSession();
   const { refresh: refreshUnread } = useUnread(active.id);
   const navigate = useNavigate();
   const [q, setQ] = useState('');
+  const [refreshKey, setRefreshKey] = useState(0);
   const { data, loading, error, reload } = useAsync(`inbox:${active.id}`, () => api.inbox(active.id), [active.id]);
 
   useInterval(reload, 15000);
@@ -76,7 +79,12 @@ export default function Inbox() {
           </IconButton>
         }
       />
-      <PullToRefresh onRefresh={reload}>
+      <PullToRefresh
+        onRefresh={async () => {
+          setRefreshKey((k) => k + 1);
+          await reload();
+        }}
+      >
         {(data?.length || 0) > 0 && (
           <div className="pad-x">
             <label className="search-field">
@@ -85,6 +93,8 @@ export default function Inbox() {
             </label>
           </div>
         )}
+        {/* notas: só aparecem quando o banco já tem a atualização */}
+        {can('notas') && <NotesRow refreshKey={refreshKey} />}
         <h3 className="section-title section-title--pad">Mensagens</h3>
         {loading && !data && (
           <div className="center-pad">

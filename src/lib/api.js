@@ -27,6 +27,12 @@ export function errorMessage(err) {
   if (/JWT|token is expired|invalid claim/i.test(msg)) return 'Sua sessão expirou. Entre de novo.';
   if ((code === 'PGRST204' || code === '42703') && /reply_to/.test(msg))
     return 'O banco ainda não tem a atualização de respostas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-respostas.sql no SQL Editor do Supabase (veja o README).';
+  if (
+    (code === 'PGRST202' && /highlight|story_archive|notes_tray|set_note/.test(msg)) ||
+    ((code === 'PGRST205' || code === '42P01') && /highlight|notes/.test(msg)) ||
+    ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
+  )
+    return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /create_post/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /music/.test(msg)))
     return 'O banco ainda não tem a atualização de música. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-musica.sql no SQL Editor do Supabase (veja o README).';
   return msg || 'Algo deu errado.';
@@ -103,6 +109,8 @@ export async function updateCharacter(id, fields) {
 }
 
 export async function deleteCharacter(uid, id) {
+  // fotos de stories em destaque ficam protegidas: tira os destaques antes
+  await supabase.from('highlights').delete().eq('character_id', id);
   await removeFolder(`${uid}/${id}`);
   unwrap(await supabase.from('characters').delete().eq('id', id));
 }
@@ -221,8 +229,9 @@ export const characterStories = (character, viewer) =>
   rpc('character_stories', { p_character: character, p_viewer: viewer });
 export const storyViewers = (story) => rpc('story_viewers', { p_story: story });
 
-export async function createStory({ character, path, width, height, music }) {
+export async function createStory({ character, path, thumbPath, width, height, music }) {
   const row = { character_id: character, path, width, height };
+  if (thumbPath) row.thumb_path = thumbPath; // só com o banco atualizado (destaques)
   if (music) row.music = music;
   const created = unwrap(await supabase.from('stories').insert(row).select('id').single());
   pokePush();
@@ -233,23 +242,66 @@ export async function markStorySeen(story, character) {
     .from('story_views')
     .upsert({ story_id: story, character_id: character }, { onConflict: 'story_id,character_id', ignoreDuplicates: true });
 }
-export async function deleteStory(story) {
-  if (story.path) await supabase.storage.from('media').remove([story.path]);
+// Excluir de vez: sai dos destaques, apaga a foto e a miniatura, depois o story
+export async function deleteStory(story, { highlights = false } = {}) {
+  if (highlights) unwrap(await supabase.from('highlight_items').delete().eq('story_id', story.id));
+  const files = [story.path, story.thumb_path].filter(Boolean);
+  if (files.length) await supabase.storage.from('media').remove(files);
   unwrap(await supabase.from('stories').delete().eq('id', story.id));
 }
 
-// Apaga stories vencidos (mais de 24h) dos meus personagens, liberando espaço
-export async function cleanupExpiredStories(characterIds) {
+// Libera espaço: com o banco atualizado, apaga stories vencidos há mais de
+// 30 dias que não estão em nenhum destaque (o arquivo de 30 dias fica);
+// sem a atualização, apaga os vencidos há mais de 24 h, como antes.
+export async function cleanupExpiredStories(characterIds, { archive = false } = {}) {
   if (!characterIds?.length) return;
-  const { data } = await supabase
-    .from('stories')
-    .select('id, path')
-    .in('character_id', characterIds)
-    .lt('expires_at', new Date().toISOString())
-    .limit(100);
-  if (!data?.length) return;
-  await supabase.storage.from('media').remove(data.map((s) => s.path));
-  await supabase.from('stories').delete().in('id', data.map((s) => s.id));
+  let list;
+  if (archive) {
+    list = (await rpc('stories_to_cleanup', { p_characters: characterIds })) || [];
+  } else {
+    const { data } = await supabase
+      .from('stories')
+      .select('id, path')
+      .in('character_id', characterIds)
+      .lt('expires_at', new Date().toISOString())
+      .limit(100);
+    list = data || [];
+  }
+  if (!list.length) return;
+  await supabase.storage.from('media').remove(list.flatMap((s) => [s.path, s.thumb_path]).filter(Boolean));
+  await supabase.from('stories').delete().in('id', list.map((s) => s.id));
+}
+
+// ---------------------------------------------------------------------
+// Destaques
+// ---------------------------------------------------------------------
+export const characterHighlights = (character, story) =>
+  rpc('character_highlights', { p_character: character, p_story: story ?? null });
+export const getHighlight = (id, viewer) => rpc('get_highlight', { p_highlight: id, p_viewer: viewer });
+export const storyArchive = (character, before) =>
+  rpc('story_archive', { p_character: character, p_before: before ?? null, p_limit: 60 });
+export const saveHighlight = ({ id, character, title, stories, cover }) =>
+  rpc('save_highlight', { p_character: character, p_title: title, p_stories: stories, p_cover: cover ?? null, p_highlight: id ?? null });
+
+export async function addToHighlight(highlight, story) {
+  const { error } = await supabase.from('highlight_items').insert({ highlight_id: highlight, story_id: story });
+  if (error && error.code !== '23505') throw error;
+}
+export async function removeFromHighlight(highlight, story) {
+  unwrap(await supabase.from('highlight_items').delete().eq('highlight_id', highlight).eq('story_id', story));
+}
+export async function deleteHighlight(id) {
+  unwrap(await supabase.from('highlights').delete().eq('id', id));
+}
+
+// ---------------------------------------------------------------------
+// Notas (topo do Direct)
+// ---------------------------------------------------------------------
+export const notesTray = (viewer) => rpc('notes_tray', { p_viewer: viewer });
+export const setNote = (character, body, music) =>
+  rpc('set_note', { p_character: character, p_body: body || '', p_music: music ?? null });
+export async function deleteNote(character) {
+  unwrap(await supabase.from('notes').delete().eq('character_id', character));
 }
 
 // ---------------------------------------------------------------------
@@ -277,9 +329,10 @@ export const getMessages = (conv, { before, after, limit = 40 } = {}) =>
 export const startConversation = (from, to, title) =>
   rpc('start_conversation', { p_from: from, p_to: to, p_title: title ?? null });
 
-export async function sendMessage({ conversation, sender, kind = 'text', body, media, post, story, replyTo }) {
+export async function sendMessage({ conversation, sender, kind = 'text', body, media, post, story, replyTo, noteBody }) {
   const row = { conversation_id: conversation, sender_id: sender, kind, body: body?.trim() || null };
   if (replyTo) row.reply_to = replyTo; // só manda quando é resposta (funciona antes da atualização do banco)
+  if (noteBody) row.note_body = noteBody.slice(0, 200); // texto da nota respondida
   if (media) Object.assign(row, { media_path: media.path, media_width: media.width, media_height: media.height });
   if (post) row.post_id = post;
   if (story) row.story_id = story;

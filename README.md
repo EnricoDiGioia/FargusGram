@@ -9,12 +9,14 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Feed com publicações de até 10 fotos, com recorte e filtros
 - Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
+- Destaques no perfil: stories guardados com nome e capa, que ficam no perfil para sempre
 - Música nos posts e nos stories: busca no catálogo do Apple Music, escolha do trecho de 15 segundos e adesivo da música no story
 - Perfis, seguidores, marcação de personagens nas fotos, @menções e #hashtags
 - Explorar, com busca de personagens e hashtags
 - Notificações de curtidas, comentários, respostas, menções, marcações e seguidores
 - Notificações no celular (mesmo com o app fechado), com número no ícone do app e escolha do que receber
 - Direct com conversas individuais e grupos, inclusive com fotos, e respostas a uma mensagem específica
+- Notas no topo do Direct: um recado curto (com música, se quiser) que dura 24 horas
 - Cada jogador pode ter vários personagens e alternar entre eles. O mestre usa isso para os NPCs.
 - Selo de verificado, dado pelo admin
 - Modo escuro
@@ -119,6 +121,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-musica.sql` | Música nos posts e nos stories |
 | `2026-09-notificacoes.sql` | Notificações no celular (depois, crie a função `push`, veja abaixo) |
 | `2026-09-respostas.sql` | Responder uma mensagem específica no Direct (rode depois da de notificações) |
+| `2026-09-destaques-notas.sql` | Destaques no perfil e notas no Direct (rode depois das anteriores) |
 
 ## Notificações no celular
 
@@ -159,6 +162,22 @@ Tocar num aviso abre o post, a conversa ou o perfil certo, já no personagem que
 
 As músicas são as prévias de 30 segundos do Apple Music, que qualquer site pode usar sem conta e sem pagar. O áudio vem direto da Apple, então não ocupa o espaço nem o tráfego do Supabase: o banco guarda só o nome, o artista e o trecho escolhido. Quem ouve gasta cerca de 1 MB de internet por música, e só quando ela toca.
 
+## Destaques e notas
+
+**Destaques** são stories que ficam no perfil, em bolinhas com nome e capa, entre a bio e as fotos.
+
+- **Destacar um story na hora:** abra o seu story e toque em **Destacar**, embaixo. Escolha um destaque que já existe ou toque em **Novo** e dê um nome.
+- **Montar um destaque com stories antigos:** no seu perfil, toque em **Novo** (o + no fim da fileira), marque os stories, toque em **Avançar**, dê um nome e escolha a capa em **Editar capa**.
+- **Arquivo:** o story some da bandeja depois de 24 horas, mas fica 30 dias num arquivo que só o dono vê, justamente para poder ir para um destaque depois. O que estiver num destaque fica para sempre. O resto é apagado depois dos 30 dias para liberar espaço.
+- **Editar:** abra o destaque e toque em ⋯ para **Editar destaque** (nome, capa e stories), **Remover do destaque** o story que está na tela ou **Excluir destaque**. Os stories continuam no arquivo.
+- Todo mundo do grupo vê os destaques e pode responder, como num story. Se o dono excluir o story, ele sai dos destaques também.
+
+**Notas** aparecem numa fileira no topo do Direct e num balão em cima da foto do perfil.
+
+- **Deixar uma nota:** no Direct, toque em **Sua nota** (ou no balão em cima da sua foto no perfil). Escreva até 60 caracteres e, se quiser, toque em **Adicionar música**.
+- A nota dura 24 horas e aparece para quem segue o personagem. Uma nota nova substitui a anterior, e dá para apagar antes.
+- **Responder:** toque na nota de alguém, escreva e envie. A resposta chega no Direct, mostrando a nota respondida, e a pessoa recebe a notificação "respondeu à sua nota".
+
 ## No dia a dia
 
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
@@ -172,7 +191,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 
 ## Limites do plano grátis
 
-- **Fotos:** o Supabase grátis tem 1 GB. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories são apagados depois de 24 horas e liberam espaço.
+- **Fotos:** o Supabase grátis tem 1 GB. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
 - **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
 - **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.
@@ -211,4 +230,3 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 ## Ideias para depois
 
 - Vídeos curtos (ocupam bastante do 1 GB grátis)
-- Destaques de stories no perfil

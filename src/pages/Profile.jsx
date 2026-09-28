@@ -8,6 +8,8 @@ import PostGrid, { GridSkeleton } from '../components/PostGrid';
 import AccountSwitcher from '../components/AccountSwitcher';
 import PullToRefresh from '../components/PullToRefresh';
 import { FollowButton } from '../components/CharacterRow';
+import { HighlightsRow } from '../components/Highlights';
+import { NoteBubble, NoteEditorSheet, NoteViewSheet } from '../components/Notes';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { useAsync, useInfinite, useOnVisible } from '../lib/hooks';
@@ -84,6 +86,8 @@ export default function Profile() {
   const [menu, setMenu] = useState(false);
   const [msgBusy, setMsgBusy] = useState(false);
   const [refreshKey, setRefreshKey] = useState(0);
+  const [noteEdit, setNoteEdit] = useState(false);
+  const [noteView, setNoteView] = useState(null);
   const key = `profile:${handle}:${active.id}`;
   const { data: p, loading, error, reload, mutate } = useAsync(key, () => api.profile(handle, active.id), [handle, active.id]);
 
@@ -141,6 +145,8 @@ export default function Profile() {
   };
 
   const followedBy = p.followed_by || [];
+  // nota: o banco atualizado sempre manda o campo "note" (mesmo vazio)
+  const showNote = p.note !== undefined && (!!p.note || isActive);
 
   return (
     <div className="page">
@@ -184,9 +190,21 @@ export default function Profile() {
           setRefreshKey((k) => k + 1);
         }}
       >
-        <section className="profile">
+        <section className={`profile ${showNote ? 'profile--note' : ''}`}>
           <div className="profile__top">
-            <Avatar character={p} size={86} ring={p.has_story ? (p.story_seen ? 'seen' : 'unseen') : 'none'} onClick={openStory} />
+            <div className="profile__avatar">
+              <Avatar character={p} size={86} ring={p.has_story ? (p.story_seen ? 'seen' : 'unseen') : 'none'} onClick={openStory} />
+              {showNote && (
+                <button
+                  type="button"
+                  className="profile__note"
+                  onClick={() => (isActive ? setNoteEdit(true) : setNoteView(p.note))}
+                  aria-label={p.note ? `Nota de ${p.handle}` : 'Deixar uma nota'}
+                >
+                  <NoteBubble note={p.note} placeholder="Nota..." />
+                </button>
+              )}
+            </div>
             <div className="profile__stats">
               <div>
                 <strong>{count(p.post_count)}</strong>
@@ -255,6 +273,9 @@ export default function Profile() {
           </div>
         </section>
 
+        {/* destaques: só aparecem quando o banco já tem a atualização */}
+        {Array.isArray(p.highlights) && <HighlightsRow highlights={p.highlights} editable={isActive} />}
+
         <div className="tabs tabs--icons" role="tablist">
           <button type="button" role="tab" aria-selected={tab === 'grid'} className={tab === 'grid' ? 'is-active' : ''} onClick={() => setTab('grid')} aria-label="Publicações">
             <Grid3x3 size={24} strokeWidth={tab === 'grid' ? 2.2 : 1.6} />
@@ -272,6 +293,8 @@ export default function Profile() {
       </PullToRefresh>
 
       <AccountSwitcher open={switchOpen} onClose={() => setSwitchOpen(false)} />
+      {showNote && isActive && <NoteEditorSheet open={noteEdit} onClose={() => setNoteEdit(false)} note={p.note} onSaved={reload} />}
+      {showNote && !isActive && <NoteViewSheet note={noteView} onClose={() => setNoteView(null)} />}
       <Sheet open={menu} onClose={() => setMenu(false)}>
         <SheetItem icon={<Link2 size={22} />} onClick={copyLink}>
           Copiar link do perfil

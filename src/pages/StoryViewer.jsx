@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX } from 'lucide-react';
+import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX, Pencil, MinusCircle } from 'lucide-react';
 import { Spinner, Sheet, SheetItem, Handle, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import CharacterRow from '../components/CharacterRow';
 import { MusicInfoSheet, MusicLine, SoundButton } from '../components/Music';
+import { AddToHighlightSheet, HighlightCover } from '../components/Highlights';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { mediaUrl } from '../lib/supabase';
@@ -16,16 +17,20 @@ import * as api from '../lib/api';
 
 const DURATION = 5500;
 
-export default function StoryViewer() {
-  const { characterId } = useParams();
-  const { active, isMine, isAdmin } = useSession();
+// mode "stories": os stories de 24 h (fila = personagens da bandeja)
+// mode "highlight": um destaque do perfil (fila = destaques daquele perfil)
+export default function StoryViewer({ mode = 'stories' }) {
+  const params = useParams();
+  const hl = mode === 'highlight';
+  const startId = hl ? params.highlightId : params.characterId;
+  const { active, isMine, isAdmin, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
-  const queue = useRef(pageCache.get('story-queue', 60 * 60 * 1000) || { order: [characterId] });
-  const order = queue.current.order?.includes(characterId) ? queue.current.order : [characterId];
-  const [ci, setCi] = useState(Math.max(0, order.indexOf(characterId)));
-  const [group, setGroup] = useState(null); // { character, stories }
+  const queue = useRef(pageCache.get(hl ? 'highlight-queue' : 'story-queue', 60 * 60 * 1000) || { order: [startId] });
+  const order = queue.current.order?.includes(startId) ? queue.current.order : [startId];
+  const [ci, setCi] = useState(Math.max(0, order.indexOf(startId)));
+  const [group, setGroup] = useState(null); // { character, stories, highlight? }
   const [si, setSi] = useState(0);
   const [paused, setPaused] = useState(false);
   const [loadedId, setLoadedId] = useState(null); // story cuja foto já apareceu
@@ -33,6 +38,7 @@ export default function StoryViewer() {
   const [menu, setMenu] = useState(false);
   const [viewers, setViewers] = useState(null);
   const [musicInfo, setMusicInfo] = useState(false);
+  const [highlightSheet, setHighlightSheet] = useState(false);
   const [audioGiveUp, setAudioGiveUp] = useState(false);
   const ps = usePlayer();
   const bar = useRef(null);
@@ -55,11 +61,28 @@ export default function StoryViewer() {
     else navigate('/', { replace: true });
   }, [navigate]);
 
-  // carrega os stories do personagem atual
+  // carrega os stories do personagem (ou do destaque) atual
   useEffect(() => {
     let alive = true;
     setGroup(null);
     (async () => {
+      if (hl) {
+        let h = null;
+        try {
+          h = await api.getHighlight(cid, active.id);
+        } catch (err) {
+          toast(api.errorMessage(err));
+        }
+        if (!alive) return;
+        if (!h?.stories?.length) {
+          if (ci < order.length - 1) setCi(ci + 1);
+          else close();
+          return;
+        }
+        setGroup({ character: h.character, stories: h.stories, highlight: h });
+        setSi(0);
+        return;
+      }
       const fromTray = queue.current.tray?.find((t) => t.character.id === cid);
       let g = fromTray;
       try {
@@ -116,7 +139,7 @@ export default function StoryViewer() {
 
   // música do story: já carrega junto com a foto, toca quando a foto aparece
   // e pausa quando segura o dedo ou abre um menu
-  const audioHeld = paused || menu || !!viewers || musicInfo || !loaded;
+  const audioHeld = paused || menu || !!viewers || musicInfo || highlightSheet || !loaded;
   useEffect(() => {
     if (!music || !musicKey) return;
     player.request(musicKey, clipOf(music), { held: audioHeld });
@@ -136,7 +159,8 @@ export default function StoryViewer() {
   const audioBlocked = !!music && ps.soundOn && ps.key === musicKey && ps.status === 'blocked';
 
   // barra de progresso
-  const holding = paused || menu || !!viewers || musicInfo || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
+  const holding =
+    paused || menu || !!viewers || musicInfo || highlightSheet || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
   useEffect(() => {
     if (!story) return;
     let raf;
@@ -197,17 +221,63 @@ export default function StoryViewer() {
     }
   };
 
+  // tira o story da tela atual (depois de excluir ou de sair do destaque)
+  const dropCurrent = () => {
+    const rest = group.stories.filter((s) => s.id !== story.id);
+    if (!rest.length) return close();
+    setGroup({ ...group, stories: rest });
+    setSi(Math.min(si, rest.length - 1));
+  };
+
   const remove = async () => {
     setMenu(false);
-    const ok = await confirm({ title: 'Excluir story?', confirmText: 'Excluir', danger: true });
+    const withHighlights = can('destaques');
+    const ok = await confirm({
+      title: 'Excluir story?',
+      message: withHighlights ? 'Se ele estiver em algum destaque, sai de lá também.' : undefined,
+      confirmText: 'Excluir',
+      danger: true,
+    });
     if (!ok) return;
     try {
-      await api.deleteStory(story);
+      await api.deleteStory(story, { highlights: withHighlights });
       changed.current = true;
-      const rest = group.stories.filter((s) => s.id !== story.id);
-      if (!rest.length) return close();
-      setGroup({ ...group, stories: rest });
-      setSi(Math.min(si, rest.length - 1));
+      emit('profile:change', { id: group.character.id });
+      dropCurrent();
+    } catch (err) {
+      toast(api.errorMessage(err));
+    }
+  };
+
+  // destaque: tirar o story, editar ou excluir o destaque inteiro
+  const removeFromHighlight = async () => {
+    setMenu(false);
+    try {
+      await api.removeFromHighlight(group.highlight.id, story.id);
+      emit('profile:change', { id: group.character.id });
+      toast(`Removido de ${group.highlight.title}`);
+      dropCurrent();
+    } catch (err) {
+      toast(api.errorMessage(err));
+    }
+  };
+  const editHighlight = () => {
+    setMenu(false);
+    navigate(`/destaques/${group.highlight.id}/editar`, { replace: true });
+  };
+  const deleteHighlight = async () => {
+    setMenu(false);
+    const ok = await confirm({
+      title: 'Excluir destaque?',
+      message: `"${group.highlight.title}" sai do perfil. Os stories continuam no seu arquivo.`,
+      confirmText: 'Excluir',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.deleteHighlight(group.highlight.id);
+      emit('profile:change', { id: group.character.id });
+      close();
     } catch (err) {
       toast(api.errorMessage(err));
     }
@@ -223,7 +293,7 @@ export default function StoryViewer() {
   };
 
   return (
-    <div className="story-viewer" role="dialog" aria-label="Stories">
+    <div className="story-viewer" role="dialog" aria-label={hl ? 'Destaque' : 'Stories'}>
       {!group && (
         <div className="story-viewer__loading">
           <Spinner size={30} />
@@ -256,11 +326,11 @@ export default function StoryViewer() {
                   aria-label={`Perfil de ${group.character.handle}`}
                   onClick={() => navigate(`/u/${group.character.handle}`, { replace: true })}
                 >
-                  <Avatar character={group.character} size={32} />
+                  {hl ? <HighlightCover cover={group.highlight.cover} size={32} /> : <Avatar character={group.character} size={32} />}
                 </button>
                 <div className="story-viewer__meta">
                   <button type="button" className="story-viewer__name" onClick={() => navigate(`/u/${group.character.handle}`, { replace: true })}>
-                    <Handle character={group.character} className="strong" badge={13} />
+                    {hl ? <strong className="story-viewer__title">{group.highlight.title}</strong> : <Handle character={group.character} className="strong" badge={13} />}
                     <span className="story-viewer__time">{timeShort(story.created_at)}</span>
                   </button>
                   {music && <MusicLine music={music} onClick={() => setMusicInfo(true)} className="story-viewer__music" />}
@@ -288,9 +358,19 @@ export default function StoryViewer() {
 
           <div className="story-viewer__bottom">
             {own ? (
-              <button type="button" className="story-viewer__seen" onClick={openViewers}>
-                <Eye size={18} /> Visualizações
-              </button>
+              <div className="story-viewer__own">
+                <button type="button" className="story-viewer__seen" onClick={openViewers}>
+                  <Eye size={18} /> Visualizações
+                </button>
+                {!hl && can('destaques') && (
+                  <button type="button" className="story-viewer__highlight" onClick={() => setHighlightSheet(true)}>
+                    <span className="round-icon" aria-hidden="true">
+                      <Heart size={12} strokeWidth={2.4} />
+                    </span>
+                    Destacar
+                  </button>
+                )}
+              </div>
             ) : (
               <form
                 className="story-reply"
@@ -324,10 +404,31 @@ export default function StoryViewer() {
 
       <MusicInfoSheet music={music} open={musicInfo} onClose={() => setMusicInfo(false)} />
       <Sheet open={menu} onClose={() => setMenu(false)}>
-        <SheetItem icon={<Trash2 size={22} />} danger onClick={remove}>
-          Excluir story
-        </SheetItem>
+        {hl ? (
+          <>
+            {own && (
+              <SheetItem icon={<Pencil size={22} />} onClick={editHighlight}>
+                Editar destaque
+              </SheetItem>
+            )}
+            <SheetItem icon={<MinusCircle size={22} />} onClick={removeFromHighlight}>
+              Remover do destaque
+            </SheetItem>
+            {own && (
+              <SheetItem icon={<Trash2 size={22} />} danger onClick={deleteHighlight}>
+                Excluir destaque
+              </SheetItem>
+            )}
+          </>
+        ) : (
+          <SheetItem icon={<Trash2 size={22} />} danger onClick={remove}>
+            Excluir story
+          </SheetItem>
+        )}
       </Sheet>
+      {!hl && own && story && (
+        <AddToHighlightSheet open={highlightSheet} onClose={() => setHighlightSheet(false)} story={story} character={group.character} />
+      )}
       <Sheet open={!!viewers} onClose={() => setViewers(null)} title="Visto por" className="sheet--tall">
         {viewers?.length === 0 && <p className="muted center-pad">Ninguém viu ainda.</p>}
         {viewers?.map((v) => (

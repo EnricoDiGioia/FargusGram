@@ -79,7 +79,7 @@ function TextEditor({ initial, onDone, onDelete, scale }) {
 }
 
 export default function CreateStory() {
-  const { active, uid } = useSession();
+  const { active, uid, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -224,8 +224,9 @@ export default function CreateStory() {
     }
     setBusy(true);
     let path;
+    let thumbPath;
     try {
-      const { blob, width, height } = await renderStory({
+      const { blob, thumb, width, height } = await renderStory({
         img: image?.img,
         crop: image ? cropRect(image, ASPECT, crop) : null,
         gradient: STORY_BACKGROUNDS[gi],
@@ -233,9 +234,12 @@ export default function CreateStory() {
         stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
       path = await api.uploadImage(uid, active.id, 'stories', blob);
+      // miniatura só quando o banco já tem destaques (senão não há onde guardar)
+      if (can('destaques')) thumbPath = await api.uploadImage(uid, active.id, 'stories', thumb);
       await api.createStory({
         character: active.id,
         path,
+        thumbPath,
         width,
         height,
         music: music ? musicForDb(music, { sticker: sticker ? { x: sticker.x, y: sticker.y, style: sticker.style } : null }) : null,
@@ -246,7 +250,7 @@ export default function CreateStory() {
       toast('Story publicado!');
       navigate('/', { replace: true });
     } catch (err) {
-      if (path) api.removeFiles([path]).catch(() => {});
+      if (path) api.removeFiles([path, thumbPath]).catch(() => {});
       toast(api.errorMessage(err));
       setBusy(false);
     }
