@@ -3,6 +3,7 @@ import { useNavigate, useParams } from 'react-router';
 import { Check, ChevronLeft, ChevronRight, Camera, Trash2 } from 'lucide-react';
 import { TopBar, BackButton, Button, Spinner, EmptyState, ErrorBox, IconButton, CloseButton, useConfirm } from '../components/ui';
 import { HighlightCover, HIGHLIGHT_TITLE_MAX } from '../components/Highlights';
+import { CloseStar } from '../components/CloseFriends';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { useInfinite, useOnVisible } from '../lib/hooks';
@@ -33,6 +34,11 @@ function ArchiveCell({ story, on, onToggle }) {
       <span className="archive-cell__check" aria-hidden="true">
         {on && <Check size={14} strokeWidth={3} />}
       </span>
+      {story.audience === 'close_friends' && (
+        <span className="archive-cell__close" title="Melhores amigos">
+          <CloseStar size={11} />
+        </span>
+      )}
     </button>
   );
 }

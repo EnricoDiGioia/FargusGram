@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Type, Images, Palette, Trash2, ChevronRight, Music2 } from 'lucide-react';
+import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
+import { CloseFriendsSheet } from '../components/CloseFriends';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { prepareImage, renderStory, STORY_BACKGROUNDS, STORY_FONT, STORY_W } from '../lib/media';
@@ -97,6 +98,9 @@ export default function CreateStory() {
   const [sticker, setSticker] = useState(null); // { x, y, style }
   const [art, setArt] = useState(null);
   const [stickerImg, setStickerImg] = useState(null); // { canvas, url }
+  const [closeSheet, setCloseSheet] = useState(false);
+  const [closePending, setClosePending] = useState(false); // publicar assim que a lista tiver alguém
+  const [sendingTo, setSendingTo] = useState(null); // qual botão mostra o "carregando"
   const drag = useRef(null);
 
   // capa da música (para o adesivo)
@@ -217,12 +221,37 @@ export default function CreateStory() {
     navigate(-1);
   };
 
-  const share = async () => {
-    if (!image && !texts.length && !music) {
-      toast('Escolha uma foto, escreva um texto ou coloque uma música');
+  const isEmpty = () => {
+    if (image || texts.length || music) return false;
+    toast('Escolha uma foto, escreva um texto ou coloque uma música');
+    return true;
+  };
+
+  // "Melhores amigos": com a lista vazia, abre a lista primeiro
+  const shareClose = async () => {
+    if (busy || isEmpty()) return;
+    setBusy(true);
+    setSendingTo('close_friends');
+    let n = 0;
+    try {
+      n = (await api.closeFriendsList(active.id)).count;
+    } catch (err) {
+      toast(api.errorMessage(err));
+      setBusy(false);
       return;
     }
+    setBusy(false);
+    if (n > 0) share('close_friends');
+    else {
+      setClosePending(true);
+      setCloseSheet(true);
+    }
+  };
+
+  const share = async (audience = 'all') => {
+    if (isEmpty()) return;
     setBusy(true);
+    setSendingTo(audience);
     let path;
     let thumbPath;
     try {
@@ -243,11 +272,12 @@ export default function CreateStory() {
         width,
         height,
         music: music ? musicForDb(music, { sticker: sticker ? { x: sticker.x, y: sticker.y, style: sticker.style } : null }) : null,
+        audience,
       });
       player.release(EDITOR_MUSIC);
       pageCache.delete(`tray:${active.id}`);
       emit('story:change');
-      toast('Story publicado!');
+      toast(audience === 'close_friends' ? 'Story publicado para os melhores amigos!' : 'Story publicado!');
       navigate('/', { replace: true });
     } catch (err) {
       if (path) api.removeFiles([path, thumbPath]).catch(() => {});
@@ -353,12 +383,42 @@ export default function CreateStory() {
       </div>
 
       <div className="story-editor__bar">
-        <button type="button" className="story-share" onClick={share} disabled={busy}>
-          <Avatar character={active} size={28} />
-          <span>Seu story</span>
-          {busy ? <Spinner size={16} className="spinner--inline" /> : <ChevronRight size={18} />}
-        </button>
+        {can('melhores_amigos') ? (
+          <>
+            <button type="button" className="story-share" onClick={() => share()} disabled={busy}>
+              <Avatar character={active} size={28} />
+              <span>Seu story</span>
+              {busy && sendingTo === 'all' && <Spinner size={16} className="spinner--inline" />}
+            </button>
+            <button type="button" className="story-share story-share--close" onClick={shareClose} disabled={busy}>
+              <span className="story-share__star" aria-hidden="true">
+                <Star size={15} fill="currentColor" strokeWidth={0} />
+              </span>
+              <span>Melhores amigos</span>
+              {busy && sendingTo === 'close_friends' && <Spinner size={16} className="spinner--inline" />}
+            </button>
+            <button type="button" className="story-share__list" onClick={() => setCloseSheet(true)} disabled={busy} aria-label="Editar lista de melhores amigos">
+              <ListChecks size={20} />
+            </button>
+          </>
+        ) : (
+          <button type="button" className="story-share" onClick={() => share()} disabled={busy}>
+            <Avatar character={active} size={28} />
+            <span>Seu story</span>
+            {busy ? <Spinner size={16} className="spinner--inline" /> : <ChevronRight size={18} />}
+          </button>
+        )}
       </div>
+      <CloseFriendsSheet
+        open={closeSheet}
+        onClose={() => {
+          setCloseSheet(false);
+          setClosePending(false);
+        }}
+        onDone={(n) => {
+          if (closePending && n > 0) share('close_friends');
+        }}
+      />
 
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={pick} />
       <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music && { ...music, sticker }} onChange={chooseMusic} story />

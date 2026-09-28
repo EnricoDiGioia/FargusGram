@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Music2, Send, Trash2 } from 'lucide-react';
+import { Music2, Send, Star, Trash2 } from 'lucide-react';
 import Avatar from './Avatar';
 import MusicPicker, { MusicDetailsLine } from './MusicPicker';
 import { MusicLine, SoundButton } from './Music';
 import { Sheet, Button, Handle, useConfirm } from './ui';
+import { CloseBadge, CloseFriendsSheet } from './CloseFriends';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { useAsync, useInterval } from '../lib/hooks';
@@ -27,8 +28,14 @@ export function noteSnapshot(note) {
 export function NoteBubble({ note, placeholder = '', size = 'small' }) {
   const m = cleanMusic(note?.music);
   const empty = !note;
+  const close = note?.audience === 'close_friends';
   return (
-    <span className={`note-bubble note-bubble--${size} ${empty ? 'is-empty' : ''}`}>
+    <span className={`note-bubble note-bubble--${size} ${empty ? 'is-empty' : ''} ${close ? 'note-bubble--close' : ''}`}>
+      {close && (
+        <span className="note-bubble__star" aria-label="Melhores amigos">
+          <Star size={size === 'big' ? 10 : 8} fill="currentColor" strokeWidth={0} />
+        </span>
+      )}
       {m && (
         <span className="note-bubble__music">
           <Music2 size={size === 'big' ? 13 : 10} strokeWidth={2.4} aria-hidden="true" />
@@ -49,29 +56,47 @@ function useLast(value) {
 
 // Deixar (ou apagar) a nota do personagem ativo
 export function NoteEditorSheet({ open, onClose, note, onSaved }) {
-  const { active } = useSession();
+  const { active, can } = useSession();
   const toast = useToast();
   const confirm = useConfirm();
   const [text, setText] = useState('');
   const [music, setMusic] = useState(null);
   const [picking, setPicking] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [audience, setAudience] = useState('all');
+  const [closeSheet, setCloseSheet] = useState(false);
+  const closeCount = useRef(null);
   const current = cleanMusic(note?.music);
+  const withClose = can('melhores_amigos');
 
   useEffect(() => {
     if (!open) return;
     setText('');
     setMusic(null);
     setBusy(false);
-  }, [open]);
+    setAudience(note?.audience === 'close_friends' ? 'close_friends' : 'all'); // repete a escolha da nota anterior
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // "Melhores amigos" com a lista vazia: abre a lista primeiro
+  const chooseClose = async () => {
+    setAudience('close_friends');
+    try {
+      const { count } = await api.closeFriendsList(active.id);
+      closeCount.current = count;
+      if (!count) setCloseSheet(true);
+    } catch (err) {
+      setAudience('all');
+      toast(api.errorMessage(err));
+    }
+  };
 
   const share = async (e) => {
     e.preventDefault();
     if (!text.trim() && !music) return;
     setBusy(true);
     try {
-      await api.setNote(active.id, text.trim(), music ? musicForDb(music) : null);
-      toast('Nota compartilhada');
+      await api.setNote(active.id, text.trim(), music ? musicForDb(music) : null, withClose ? audience : undefined);
+      toast(withClose && audience === 'close_friends' ? 'Nota compartilhada com os melhores amigos' : 'Nota compartilhada');
       onSaved?.();
       onClose();
     } catch (err) {
@@ -103,7 +128,10 @@ export function NoteEditorSheet({ open, onClose, note, onSaved }) {
                 <span className="note-edit__label">Nota atual</span>
                 <span>{note.body || (current ? `♫ ${musicLabel(current)}` : '')}</span>
                 {note.body && current && <span className="muted note-edit__music">♫ {musicLabel(current)}</span>}
-                <span className="muted note-edit__time">{timeShort(note.created_at)}</span>
+                <span className="muted note-edit__time">
+                  {timeShort(note.created_at)}
+                  {note.audience === 'close_friends' && <CloseBadge className="note-edit__badge" />}
+                </span>
               </div>
               <button type="button" className="icon-btn" aria-label="Apagar nota" onClick={remove}>
                 <Trash2 size={20} />
@@ -111,7 +139,11 @@ export function NoteEditorSheet({ open, onClose, note, onSaved }) {
             </div>
           )}
           <div className="note-edit__preview">
-            <NoteBubble note={text.trim() || music ? { body: text.trim(), music: music ? musicForDb(music) : null } : null} placeholder="Compartilhe um pensamento..." size="big" />
+            <NoteBubble
+              note={text.trim() || music ? { body: text.trim(), music: music ? musicForDb(music) : null, audience: withClose ? audience : 'all' } : null}
+              placeholder="Compartilhe um pensamento..."
+              size="big"
+            />
             <Avatar character={active} size={72} />
           </div>
           <label className="note-edit__field">
@@ -144,13 +176,52 @@ export function NoteEditorSheet({ open, onClose, note, onSaved }) {
               <Music2 size={18} /> Adicionar música
             </button>
           )}
-          <p className="muted note-edit__hint">Quem segue @{active.handle} vê sua nota no Direct por 24 horas.</p>
+          {withClose && (
+            <div className="segmented note-edit__audience" role="group" aria-label="Quem vê a nota">
+              <button type="button" className={audience === 'all' ? 'is-active' : ''} aria-pressed={audience === 'all'} onClick={() => setAudience('all')}>
+                Seguidores
+              </button>
+              <button
+                type="button"
+                className={audience === 'close_friends' ? 'is-active is-close' : ''}
+                aria-pressed={audience === 'close_friends'}
+                onClick={chooseClose}
+              >
+                <Star size={13} fill="currentColor" strokeWidth={0} /> Melhores amigos
+              </button>
+            </div>
+          )}
+          <p className="muted note-edit__hint">
+            {withClose && audience === 'close_friends'
+              ? 'Só os seus melhores amigos veem esta nota no Direct por 24 horas.'
+              : `Quem segue @${active.handle} vê sua nota no Direct por 24 horas.`}
+            {withClose && audience === 'close_friends' && (
+              <>
+                {' '}
+                <button type="button" className="link-inline" onClick={() => setCloseSheet(true)}>
+                  Editar lista
+                </button>
+              </>
+            )}
+          </p>
           <Button type="submit" variant="primary" className="btn--block" loading={busy} disabled={!text.trim() && !music}>
             Compartilhar
           </Button>
         </form>
       </Sheet>
       <MusicPicker open={picking} onClose={() => setPicking(false)} value={music} onChange={(m) => setMusic(m)} />
+      {withClose && (
+        <CloseFriendsSheet
+          open={closeSheet}
+          onCount={(c) => {
+            closeCount.current = c;
+          }}
+          onClose={() => {
+            setCloseSheet(false);
+            if (!closeCount.current) setAudience('all'); // lista continua vazia: a nota vai para os seguidores
+          }}
+        />
+      )}
     </>
   );
 }
@@ -211,6 +282,7 @@ export function NoteViewSheet({ note, onClose }) {
             <Avatar character={shown.character} size={88} />
             <Handle character={shown.character} className="strong" />
             <span className="muted note-view__time">{timeShort(shown.created_at)}</span>
+            {shown.audience === 'close_friends' && <CloseBadge />}
           </button>
           {m && (
             <div className="note-view__music">

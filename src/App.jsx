@@ -33,6 +33,7 @@ import NewMessage from './pages/NewMessage';
 import Settings from './pages/Settings';
 import EditProfile from './pages/EditProfile';
 import NewCharacter from './pages/NewCharacter';
+import CloseFriendsPage from './pages/CloseFriends';
 
 const CreatePost = lazy(() => import('./pages/CreatePost'));
 const CreateStory = lazy(() => import('./pages/CreateStory'));
@@ -226,6 +227,7 @@ function AppRoutes() {
             <Route path="admin" element={<Admin />} />
             <Route path="editar-perfil" element={<EditProfile />} />
             <Route path="novo-personagem" element={<NewCharacter />} />
+            <Route path="melhores-amigos" element={<CloseFriendsPage />} />
           </Route>
           {/* telas cheias; comentários só esmaecem porque o campo de texto é fixo */}
           <Route path="p/:id/comentarios" element={screen(<Comments />, { fadeOnly: true })} />

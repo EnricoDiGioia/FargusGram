@@ -6,6 +6,7 @@ import Avatar from '../components/Avatar';
 import CharacterRow from '../components/CharacterRow';
 import { MusicInfoSheet, MusicLine, SoundButton } from '../components/Music';
 import { AddToHighlightSheet, HighlightCover } from '../components/Highlights';
+import { CloseBadge } from '../components/CloseFriends';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { mediaUrl } from '../lib/supabase';
@@ -332,6 +333,7 @@ export default function StoryViewer({ mode = 'stories' }) {
                   <button type="button" className="story-viewer__name" onClick={() => navigate(`/u/${group.character.handle}`, { replace: true })}>
                     {hl ? <strong className="story-viewer__title">{group.highlight.title}</strong> : <Handle character={group.character} className="strong" badge={13} />}
                     <span className="story-viewer__time">{timeShort(story.created_at)}</span>
+                    {story.audience === 'close_friends' && <CloseBadge className="story-viewer__close" />}
                   </button>
                   {music && <MusicLine music={music} onClick={() => setMusicInfo(true)} className="story-viewer__music" />}
                 </div>

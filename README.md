@@ -17,6 +17,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Notificações no celular (mesmo com o app fechado), com número no ícone do app e escolha do que receber
 - Direct com conversas individuais e grupos, inclusive com fotos, e respostas a uma mensagem específica
 - Notas no topo do Direct: um recado curto (com música, se quiser) que dura 24 horas
+- Melhores amigos: cada personagem monta a sua lista secreta e pode mandar stories e notas só para ela (anel verde)
 - Cada jogador pode ter vários personagens e alternar entre eles. O mestre usa isso para os NPCs.
 - Selo de verificado, dado pelo admin
 - Modo escuro
@@ -122,6 +123,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-notificacoes.sql` | Notificações no celular (depois, crie a função `push`, veja abaixo) |
 | `2026-09-respostas.sql` | Responder uma mensagem específica no Direct (rode depois da de notificações) |
 | `2026-09-destaques-notas.sql` | Destaques no perfil e notas no Direct (rode depois das anteriores) |
+| `2026-09-melhores-amigos.sql` | Melhores amigos (rode depois da de destaques e notas) |
 
 ## Notificações no celular
 
@@ -178,6 +180,16 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - A nota dura 24 horas e aparece para quem segue o personagem. Uma nota nova substitui a anterior, e dá para apagar antes.
 - **Responder:** toque na nota de alguém, escreva e envie. A resposta chega no Direct, mostrando a nota respondida, e a pessoa recebe a notificação "respondeu à sua nota".
 
+## Melhores amigos
+
+Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem está nela. Quem entra ou sai da lista não recebe aviso nenhum: só passa a ver (ou deixa de ver) o que for marcado como Melhores amigos.
+
+- **Montar a lista:** em **Configurações** → **Melhores amigos**, toque nos personagens para marcar ou desmarcar. Dá para colocar alguém também pelo perfil da pessoa: ⋯ → **Adicionar aos melhores amigos**. A lista é do personagem que você está usando; os NPCs têm a lista deles.
+- **Story só para a lista:** no editor de story, toque em **Melhores amigos** em vez de **Seu story**. Se a lista estiver vazia, ela abre primeiro para você escolher quem entra. Quem está na lista vê o seu story com o anel **verde** e o selo "Melhores amigos"; para os outros, ele não existe.
+- **Nota só para a lista:** ao deixar uma nota, escolha **Melhores amigos** em vez de **Seguidores**. Ela aparece com um contorno verde.
+- **Destaques:** um story de Melhores amigos que estiver num destaque continua só para a lista. Se o destaque só tiver stories assim, quem está fora da lista nem vê o destaque.
+- Tirar alguém da lista vale na hora, inclusive para os stories e destaques antigos.
+
 ## No dia a dia
 
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
@@ -203,6 +215,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - Publicações, perfis, comentários e mensagens só aparecem para quem entrou com o código de convite.
 - As fotos ficam num bucket público do Supabase. O endereço de cada foto é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
 - Os e-mails dos jogadores só aparecem para os admins.
+- Stories e notas de **Melhores amigos** só chegam a quem está na lista: o próprio banco esconde, não só a tela. A lista em si é secreta, só o dono vê. (A foto do story continua no bucket público: quem estiver na lista e copiar o endereço da imagem consegue repassar.)
 - As notificações no celular passam pelos servidores de push do Google, da Apple ou da Mozilla (depende do celular), mas vão criptografadas: só o aparelho de quem recebe consegue ler o texto.
 
 ## Mudar o app depois

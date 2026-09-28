@@ -1,6 +1,6 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Shield, LogOut, ChevronRight, Smartphone, Moon, KeyRound, UserRound } from 'lucide-react';
+import { Plus, Shield, LogOut, ChevronRight, Smartphone, Moon, KeyRound, UserRound, Star } from 'lucide-react';
 import { TopBar, BackButton, Button, Handle } from '../components/ui';
 import Avatar from '../components/Avatar';
 import { InstallSteps } from '../components/InstallBanner';
@@ -12,7 +12,7 @@ import * as api from '../lib/api';
 const PushSettings = lazy(() => import('../components/PushSettings'));
 
 export default function Settings() {
-  const { me, session, characters, active, setActive, isAdmin, signOut, refreshMe } = useSession();
+  const { me, session, characters, active, setActive, isAdmin, signOut, refreshMe, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
   const [theme, setThemeState] = useState(getTheme());
@@ -78,6 +78,21 @@ export default function Settings() {
           <span className="settings-row__label">Criar novo personagem</span>
         </button>
       </section>
+
+      {can('melhores_amigos') && (
+        <section className="settings-section">
+          <button type="button" className="settings-row" onClick={() => navigate('/melhores-amigos')}>
+            <span className="settings-row__icon settings-row__icon--close">
+              <Star size={20} fill="currentColor" strokeWidth={0} />
+            </span>
+            <span className="settings-row__label">
+              Melhores amigos
+              <span className="muted small">Lista de @{active.handle}: quem vê seus stories e notas marcados</span>
+            </span>
+            <ChevronRight size={18} className="muted" />
+          </button>
+        </section>
+      )}
 
       <section className="settings-section">
         <h3 className="section-title">

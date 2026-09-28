@@ -37,7 +37,7 @@ export default function StoriesTray({ refreshKey }) {
           <Avatar
             character={active}
             size={64}
-            ring={mine ? (mine.all_seen ? 'seen' : 'unseen') : 'none'}
+            ring={mine ? (mine.all_seen ? 'seen' : mine.close_friends ? 'close' : 'unseen') : 'none'}
             onClick={() => (mine ? open(active.id) : navigate('/criar/story'))}
           />
           {!mine && (
@@ -50,7 +50,7 @@ export default function StoriesTray({ refreshKey }) {
       </div>
       {others.map((t) => (
         <div className="tray__item" role="listitem" key={t.character.id}>
-          <Avatar character={t.character} size={64} ring={t.all_seen ? 'seen' : 'unseen'} onClick={() => open(t.character.id)} />
+          <Avatar character={t.character} size={64} ring={t.all_seen ? 'seen' : t.close_friends ? 'close' : 'unseen'} onClick={() => open(t.character.id)} />
           <span className={`tray__label ${t.all_seen ? 'muted' : ''}`}>{t.character.handle}</span>
         </div>
       ))}

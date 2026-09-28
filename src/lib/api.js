@@ -28,6 +28,11 @@ export function errorMessage(err) {
   if ((code === 'PGRST204' || code === '42703') && /reply_to/.test(msg))
     return 'O banco ainda não tem a atualização de respostas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-respostas.sql no SQL Editor do Supabase (veja o README).';
   if (
+    ((code === 'PGRST202' || code === 'PGRST205' || code === '42P01') && /close_friends/.test(msg)) ||
+    ((code === 'PGRST204' || code === '42703') && /audience/.test(msg))
+  )
+    return 'O banco ainda não tem a atualização de melhores amigos. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-melhores-amigos.sql no SQL Editor do Supabase (veja o README).';
+  if (
     (code === 'PGRST202' && /highlight|story_archive|notes_tray|set_note/.test(msg)) ||
     ((code === 'PGRST205' || code === '42P01') && /highlight|notes/.test(msg)) ||
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
@@ -229,9 +234,10 @@ export const characterStories = (character, viewer) =>
   rpc('character_stories', { p_character: character, p_viewer: viewer });
 export const storyViewers = (story) => rpc('story_viewers', { p_story: story });
 
-export async function createStory({ character, path, thumbPath, width, height, music }) {
+export async function createStory({ character, path, thumbPath, width, height, music, audience }) {
   const row = { character_id: character, path, width, height };
   if (thumbPath) row.thumb_path = thumbPath; // só com o banco atualizado (destaques)
+  if (audience === 'close_friends') row.audience = 'close_friends'; // só com melhores amigos
   if (music) row.music = music;
   const created = unwrap(await supabase.from('stories').insert(row).select('id').single());
   pokePush();
@@ -298,10 +304,25 @@ export async function deleteHighlight(id) {
 // Notas (topo do Direct)
 // ---------------------------------------------------------------------
 export const notesTray = (viewer) => rpc('notes_tray', { p_viewer: viewer });
-export const setNote = (character, body, music) =>
-  rpc('set_note', { p_character: character, p_body: body || '', p_music: music ?? null });
+// audience ('all' | 'close_friends') só vai quando o banco tem melhores amigos
+export const setNote = (character, body, music, audience) =>
+  rpc('set_note', { p_character: character, p_body: body || '', p_music: music ?? null, ...(audience ? { p_audience: audience } : {}) });
 export async function deleteNote(character) {
   unwrap(await supabase.from('notes').delete().eq('character_id', character));
+}
+
+// ---------------------------------------------------------------------
+// Melhores amigos (cada personagem tem a sua lista; só o dono vê)
+// ---------------------------------------------------------------------
+export const closeFriendsList = (character, query) =>
+  rpc('close_friends_list', { p_character: character, p_query: query?.trim() || null });
+export async function setCloseFriend(character, friend, on) {
+  if (on) {
+    const { error } = await supabase.from('close_friends').insert({ character_id: character, friend_id: friend });
+    if (error && error.code !== '23505') throw error; // já estava na lista
+  } else {
+    unwrap(await supabase.from('close_friends').delete().eq('character_id', character).eq('friend_id', friend));
+  }
 }
 
 // ---------------------------------------------------------------------

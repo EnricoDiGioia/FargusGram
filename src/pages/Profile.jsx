@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ChevronDown, Menu, PlusSquare, Grid3x3, SquareUserRound, Bookmark, MoreHorizontal, Link2, Camera } from 'lucide-react';
+import { ChevronDown, Menu, PlusSquare, Grid3x3, SquareUserRound, Bookmark, MoreHorizontal, Link2, Camera, Star } from 'lucide-react';
 import { TopBar, BackButton, IconButton, Spinner, EmptyState, ErrorBox, Handle, Button, Sheet, SheetItem, PageLoader } from '../components/ui';
 import Avatar from '../components/Avatar';
 import RichText from '../components/RichText';
@@ -78,7 +78,7 @@ function PostsTab({ kind, character }) {
 
 export default function Profile() {
   const { handle } = useParams();
-  const { active, isMine, setActive } = useSession();
+  const { active, isMine, setActive, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
   const [tab, setTab] = useState('grid');
@@ -144,6 +144,20 @@ export default function Profile() {
     }
   };
 
+  // melhores amigos: a lista é do personagem ativo (quem entra não fica sabendo)
+  const toggleClose = async () => {
+    setMenu(false);
+    const on = !p.is_close_friend;
+    mutate((x) => (x ? { ...x, is_close_friend: on } : x));
+    try {
+      await api.setCloseFriend(active.id, p.id, on);
+      toast(on ? `${p.handle} entrou nos seus melhores amigos` : `${p.handle} saiu dos seus melhores amigos`);
+    } catch (e) {
+      mutate((x) => (x ? { ...x, is_close_friend: !on } : x));
+      toast(api.errorMessage(e));
+    }
+  };
+
   const followedBy = p.followed_by || [];
   // nota: o banco atualizado sempre manda o campo "note" (mesmo vazio)
   const showNote = p.note !== undefined && (!!p.note || isActive);
@@ -193,7 +207,7 @@ export default function Profile() {
         <section className={`profile ${showNote ? 'profile--note' : ''}`}>
           <div className="profile__top">
             <div className="profile__avatar">
-              <Avatar character={p} size={86} ring={p.has_story ? (p.story_seen ? 'seen' : 'unseen') : 'none'} onClick={openStory} />
+              <Avatar character={p} size={86} ring={p.has_story ? (p.story_seen ? 'seen' : p.story_close ? 'close' : 'unseen') : 'none'} onClick={openStory} />
               {showNote && (
                 <button
                   type="button"
@@ -296,6 +310,11 @@ export default function Profile() {
       {showNote && isActive && <NoteEditorSheet open={noteEdit} onClose={() => setNoteEdit(false)} note={p.note} onSaved={reload} />}
       {showNote && !isActive && <NoteViewSheet note={noteView} onClose={() => setNoteView(null)} />}
       <Sheet open={menu} onClose={() => setMenu(false)}>
+        {can('melhores_amigos') && p.is_close_friend !== undefined && (
+          <SheetItem icon={<span className={`close-toggle ${p.is_close_friend ? 'is-on' : ''}`}><Star size={16} fill={p.is_close_friend ? 'currentColor' : 'none'} /></span>} onClick={toggleClose}>
+            {p.is_close_friend ? 'Remover dos melhores amigos' : 'Adicionar aos melhores amigos'}
+          </SheetItem>
+        )}
         <SheetItem icon={<Link2 size={22} />} onClick={copyLink}>
           Copiar link do perfil
         </SheetItem>
