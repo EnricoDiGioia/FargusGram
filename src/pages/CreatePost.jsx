@@ -4,12 +4,14 @@ import { ImagePlus, Plus, X, Crop, MapPin, UserPlus, Search, Check, ChevronLeft 
 import { TopBar, CloseButton, IconButton, Spinner, Sheet, Handle, useConfirm, FullScreen } from '../components/ui';
 import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
+import MusicPicker, { MusicDetailsLine } from '../components/MusicPicker';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { FILTERS, filterCss, prepareImage, renderCrop, POST_WIDTH } from '../lib/media';
 import { useDebounced } from '../lib/hooks';
 import { emit } from '../lib/events';
 import { pageCache } from '../lib/storage';
+import { musicForDb } from '../lib/music';
 import * as api from '../lib/api';
 
 const MAX = 10;
@@ -82,6 +84,8 @@ export default function CreatePost() {
   const [location, setLocation] = useState('');
   const [tags, setTags] = useState([]);
   const [tagOpen, setTagOpen] = useState(false);
+  const [music, setMusic] = useState(null);
+  const [musicOpen, setMusicOpen] = useState(false);
   const [publishing, setPublishing] = useState(null);
 
   const itemsRef = useRef(items);
@@ -150,7 +154,14 @@ export default function CreatePost() {
         media.push({ path, thumb_path: thumbPath, width, height });
       }
       setPublishing({ done: items.length, total: items.length });
-      const id = await api.createPost({ character: active.id, caption, location, media, tags: tags.map((t) => t.id) });
+      const id = await api.createPost({
+        character: active.id,
+        caption,
+        location,
+        media,
+        tags: tags.map((t) => t.id),
+        music: musicForDb(music),
+      });
       pageCache.delete(`feed:${active.id}`);
       pageCache.delete(`grid:${active.id}`);
       pageCache.delete('explore');
@@ -294,6 +305,7 @@ export default function CreatePost() {
               <UserPlus size={20} />
               <span>{tags.length ? tags.map((t) => '@' + t.handle).join(', ') : 'Marcar personagens'}</span>
             </button>
+            <MusicDetailsLine music={music} onOpen={() => setMusicOpen(true)} onClear={() => setMusic(null)} />
             <div className="details__as">
               <Avatar character={active} size={28} />
               <span className="muted">
@@ -302,6 +314,7 @@ export default function CreatePost() {
             </div>
           </div>
           <TagPicker open={tagOpen} onClose={() => setTagOpen(false)} value={tags} onChange={setTags} />
+          <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music} onChange={(m) => setMusic(m)} />
         </>
       )}
 

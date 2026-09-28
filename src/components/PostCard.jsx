@@ -1,9 +1,10 @@
-import { useRef, useState } from 'react';
+import { useMemo, useRef, useState } from 'react';
 import { Link, useNavigate } from 'react-router';
 import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, UserRound, Trash2, Pencil, Link2, User, ChevronLeft, ChevronRight } from 'lucide-react';
 import Avatar from './Avatar';
 import RichText from './RichText';
 import ShareSheet from './ShareSheet';
+import { MusicInfoSheet, MusicLine, SoundButton, useMusicInView } from './Music';
 import { Handle, Sheet, SheetItem, useConfirm } from './ui';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
@@ -11,10 +12,11 @@ import * as api from '../lib/api';
 import { mediaUrl } from '../lib/supabase';
 import { emit } from '../lib/events';
 import { count, timeLong } from '../lib/format';
+import { cleanMusic } from '../lib/music';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, onIndex }) {
+export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, onIndex, children }) {
   const track = useRef(null);
   const last = useRef({ t: 0, x: 0, y: 0 });
   const [showTags, setShowTags] = useState(false);
@@ -97,8 +99,23 @@ export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, 
           <Heart size={96} fill="currentColor" strokeWidth={0} />
         </span>
       )}
+      {children}
     </div>
   );
+}
+
+// Segunda linha do topo do post: local, música ou os dois se alternando
+function PostSubline({ location, music, onMusic }) {
+  if (location && music)
+    return (
+      <span className="post__sub post__sub--rotate">
+        <span className="post__loc">{location}</span>
+        <MusicLine music={music} onClick={onMusic} className="post__music" />
+      </span>
+    );
+  if (music) return <MusicLine music={music} onClick={onMusic} className="post__music" />;
+  if (location) return <span className="post__loc">{location}</span>;
+  return null;
 }
 
 export function Dots({ total, index }) {
@@ -153,6 +170,11 @@ export default function PostCard({ post, showAllComments = false }) {
   const [burst, setBurst] = useState(0);
   const [index, setIndex] = useState(0);
   const [likeAnim, setLikeAnim] = useState(false);
+  const [musicInfo, setMusicInfo] = useState(false);
+  const media = useRef(null);
+  const music = useMemo(() => cleanMusic(post.music), [post.music]);
+  const musicKey = `post:${post.id}`;
+  useMusicInView(media, musicKey, music);
 
   const mine = isMine(post.character?.id);
   const patch = (p) => emit('post:update', { id: post.id, patch: p });
@@ -234,14 +256,18 @@ export default function PostCard({ post, showAllComments = false }) {
           <Link to={`/u/${c.handle}`} className="post__handle">
             <Handle character={c} />
           </Link>
-          {post.location && <span className="post__loc">{post.location}</span>}
+          <PostSubline location={post.location} music={music} onMusic={() => setMusicInfo(true)} />
         </div>
         <button type="button" className="icon-btn" aria-label="Mais opções" onClick={() => setMenu(true)}>
           <MoreHorizontal size={22} />
         </button>
       </header>
 
-      <MediaCarousel media={post.media} tags={post.tags} onDoubleTap={onDoubleTap} burstKey={burst} index={index} onIndex={setIndex} />
+      <div ref={media}>
+        <MediaCarousel media={post.media} tags={post.tags} onDoubleTap={onDoubleTap} burstKey={burst} index={index} onIndex={setIndex}>
+          {music && <SoundButton playerKey={musicKey} className="carousel__sound" />}
+        </MediaCarousel>
+      </div>
 
       <div className="post__actions">
         <div className="post__actions-left">
@@ -343,6 +369,7 @@ export default function PostCard({ post, showAllComments = false }) {
       </Sheet>
 
       <ShareSheet open={share} onClose={() => setShare(false)} post={post} />
+      {music && <MusicInfoSheet music={music} open={musicInfo} onClose={() => setMusicInfo(false)} />}
     </article>
   );
 }

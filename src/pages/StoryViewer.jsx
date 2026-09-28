@@ -1,15 +1,17 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { X, MoreHorizontal, Heart, Send, Eye, Trash2 } from 'lucide-react';
+import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX } from 'lucide-react';
 import { Spinner, Sheet, SheetItem, Handle, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import CharacterRow from '../components/CharacterRow';
+import { MusicInfoSheet, MusicLine, SoundButton } from '../components/Music';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { mediaUrl } from '../lib/supabase';
 import { pageCache } from '../lib/storage';
 import { emit } from '../lib/events';
 import { timeShort } from '../lib/format';
+import { cleanMusic, clipOf, player, usePlayer } from '../lib/music';
 import * as api from '../lib/api';
 
 const DURATION = 5500;
@@ -26,10 +28,13 @@ export default function StoryViewer() {
   const [group, setGroup] = useState(null); // { character, stories }
   const [si, setSi] = useState(0);
   const [paused, setPaused] = useState(false);
-  const [loaded, setLoaded] = useState(false);
+  const [loadedId, setLoadedId] = useState(null); // story cuja foto já apareceu
   const [reply, setReply] = useState('');
   const [menu, setMenu] = useState(false);
   const [viewers, setViewers] = useState(null);
+  const [musicInfo, setMusicInfo] = useState(false);
+  const [audioGiveUp, setAudioGiveUp] = useState(false);
+  const ps = usePlayer();
   const bar = useRef(null);
   const elapsed = useRef(0);
   const touch = useRef(null);
@@ -37,7 +42,12 @@ export default function StoryViewer() {
 
   const cid = order[ci];
   const story = group?.stories?.[si];
+  const loaded = !!story && loadedId === story.id;
   const own = group && isMine(group.character.id);
+  const storyMusic = story?.music;
+  const music = useMemo(() => cleanMusic(storyMusic), [storyMusic]);
+  const musicKey = story ? `story:${story.id}` : null;
+  const duration = music ? Math.round(music.duration * 1000) : DURATION;
 
   const close = useCallback(() => {
     if (changed.current) emit('story:change');
@@ -49,7 +59,6 @@ export default function StoryViewer() {
   useEffect(() => {
     let alive = true;
     setGroup(null);
-    setLoaded(false);
     (async () => {
       const fromTray = queue.current.tray?.find((t) => t.character.id === cid);
       let g = fromTray;
@@ -102,12 +111,32 @@ export default function StoryViewer() {
   }, [story?.id, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    setLoaded(false);
     elapsed.current = 0;
   }, [story?.id]);
 
+  // música do story: já carrega junto com a foto, toca quando a foto aparece
+  // e pausa quando segura o dedo ou abre um menu
+  const audioHeld = paused || menu || !!viewers || musicInfo || !loaded;
+  useEffect(() => {
+    if (!music || !musicKey) return;
+    player.request(musicKey, clipOf(music), { held: audioHeld });
+    return () => player.release(musicKey);
+  }, [musicKey, music]); // eslint-disable-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (musicKey) player.hold(musicKey, audioHeld);
+  }, [musicKey, audioHeld]);
+  // espera a música começar (no máximo 4 s depois da foto) antes de andar a barra
+  useEffect(() => {
+    setAudioGiveUp(false);
+    if (!music || !loaded) return;
+    const t = setTimeout(() => setAudioGiveUp(true), 4000);
+    return () => clearTimeout(t);
+  }, [story?.id, music, loaded]);
+  const audioWaiting = !!music && loaded && ps.soundOn && !audioGiveUp && (ps.key !== musicKey || ps.status === 'loading');
+  const audioBlocked = !!music && ps.soundOn && ps.key === musicKey && ps.status === 'blocked';
+
   // barra de progresso
-  const holding = paused || menu || !!viewers || !loaded || document.activeElement?.tagName === 'INPUT';
+  const holding = paused || menu || !!viewers || musicInfo || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
   useEffect(() => {
     if (!story) return;
     let raf;
@@ -116,7 +145,7 @@ export default function StoryViewer() {
       const dt = now - last;
       last = now;
       if (!holding) elapsed.current += dt;
-      const p = Math.min(1, elapsed.current / DURATION);
+      const p = Math.min(1, elapsed.current / duration);
       if (bar.current) bar.current.style.transform = `scaleX(${p})`;
       if (p >= 1) {
         next();
@@ -126,7 +155,7 @@ export default function StoryViewer() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [story, holding, next]);
+  }, [story, holding, next, duration]);
 
   const onPointerDown = (e) => {
     touch.current = { x: e.clientX, y: e.clientY, t: Date.now() };
@@ -203,7 +232,7 @@ export default function StoryViewer() {
       {group && story && (
         <>
           <div className="story-viewer__media" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => setPaused(false)} onContextMenu={(e) => e.preventDefault()}>
-            <img key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoaded(true)} onError={() => setLoaded(true)} />
+            <img key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoadedId(story.id)} onError={() => setLoadedId(story.id)} />
             {!loaded && (
               <div className="story-viewer__loading">
                 <Spinner size={30} />
@@ -220,18 +249,25 @@ export default function StoryViewer() {
               ))}
             </div>
             <div className="story-viewer__head">
-              <button
-                type="button"
-                className="story-viewer__who"
-                onClick={() => {
-                  navigate(`/u/${group.character.handle}`, { replace: true });
-                }}
-              >
-                <Avatar character={group.character} size={32} />
-                <Handle character={group.character} className="strong" badge={13} />
-                <span className="story-viewer__time">{timeShort(story.created_at)}</span>
-              </button>
+              <div className="story-viewer__who">
+                <button
+                  type="button"
+                  className="story-viewer__avatar"
+                  aria-label={`Perfil de ${group.character.handle}`}
+                  onClick={() => navigate(`/u/${group.character.handle}`, { replace: true })}
+                >
+                  <Avatar character={group.character} size={32} />
+                </button>
+                <div className="story-viewer__meta">
+                  <button type="button" className="story-viewer__name" onClick={() => navigate(`/u/${group.character.handle}`, { replace: true })}>
+                    <Handle character={group.character} className="strong" badge={13} />
+                    <span className="story-viewer__time">{timeShort(story.created_at)}</span>
+                  </button>
+                  {music && <MusicLine music={music} onClick={() => setMusicInfo(true)} className="story-viewer__music" />}
+                </div>
+              </div>
               <div className="story-viewer__actions">
+                {music && <SoundButton playerKey={musicKey} light size={22} />}
                 {(own || isAdmin) && (
                   <button type="button" className="icon-btn icon-btn--light" aria-label="Opções" onClick={() => setMenu(true)}>
                     <MoreHorizontal size={24} />
@@ -243,6 +279,12 @@ export default function StoryViewer() {
               </div>
             </div>
           </div>
+
+          {audioBlocked && (
+            <button type="button" data-sound-btn="" className="story-viewer__tap-sound" onClick={() => player.retry()}>
+              <VolumeX size={16} /> Toque para ouvir a música
+            </button>
+          )}
 
           <div className="story-viewer__bottom">
             {own ? (
@@ -280,6 +322,7 @@ export default function StoryViewer() {
         </>
       )}
 
+      <MusicInfoSheet music={music} open={musicInfo} onClose={() => setMusicInfo(false)} />
       <Sheet open={menu} onClose={() => setMenu(false)}>
         <SheetItem icon={<Trash2 size={22} />} danger onClick={remove}>
           Excluir story

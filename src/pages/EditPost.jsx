@@ -2,11 +2,13 @@ import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { MapPin } from 'lucide-react';
 import { TopBar, Spinner, PageLoader, ErrorBox } from '../components/ui';
+import MusicPicker, { MusicDetailsLine } from '../components/MusicPicker';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { useAsync } from '../lib/hooks';
 import { mediaUrl } from '../lib/supabase';
 import { emit } from '../lib/events';
+import { cleanMusic, musicForDb } from '../lib/music';
 import * as api from '../lib/api';
 
 export default function EditPost() {
@@ -17,20 +19,32 @@ export default function EditPost() {
   const { data: post, loading, error, reload } = useAsync(`post:${id}:${active.id}`, () => api.getPost(id, active.id), [id]);
   const [caption, setCaption] = useState('');
   const [location, setLocation] = useState('');
+  const [music, setMusic] = useState(null);
+  const [musicChanged, setMusicChanged] = useState(false);
+  const [musicOpen, setMusicOpen] = useState(false);
   const [busy, setBusy] = useState(false);
 
   useEffect(() => {
     if (post) {
       setCaption(post.caption || '');
       setLocation(post.location || '');
+      setMusic(cleanMusic(post.music));
+      setMusicChanged(false);
     }
   }, [post?.id]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const changeMusic = (m) => {
+    setMusic(m);
+    setMusicChanged(true);
+  };
 
   const save = async () => {
     setBusy(true);
     try {
-      await api.updatePost(id, { caption, location });
-      emit('post:update', { id, patch: { caption, location, edited_at: new Date().toISOString() } });
+      const patch = { caption, location };
+      if (musicChanged) patch.music = musicForDb(music);
+      await api.updatePost(id, patch);
+      emit('post:update', { id, patch: { ...patch, edited_at: new Date().toISOString() } });
       toast('Publicação atualizada');
       navigate(-1);
     } catch (err) {
@@ -76,8 +90,10 @@ export default function EditPost() {
           <MapPin size={20} />
           <input value={location} maxLength={100} onChange={(e) => setLocation(e.target.value)} placeholder="Local" />
         </label>
-        <p className="muted small pad-x">Para trocar as fotos, exclua e publique de novo.</p>
+        <MusicDetailsLine music={music} onOpen={() => setMusicOpen(true)} onClear={() => changeMusic(null)} />
+        <p className="muted small pad-x pad-y">Para trocar as fotos, exclua e publique de novo.</p>
       </div>
+      <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music} onChange={changeMusic} />
     </div>
   );
 }

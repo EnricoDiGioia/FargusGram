@@ -1,5 +1,12 @@
 import { createClient } from '@supabase/supabase-js';
-import { SUPABASE_URL, SUPABASE_KEY } from '../config';
+import { SUPABASE_URL as RAW_URL, SUPABASE_KEY as RAW_KEY } from '../config';
+
+// Aceita a URL copiada com barra no fim ou com /rest/v1 (acontece bastante)
+const SUPABASE_URL = String(RAW_URL || '')
+  .trim()
+  .replace(/\/+$/, '')
+  .replace(/\/(rest|auth|storage)\/v1$/, '');
+const SUPABASE_KEY = String(RAW_KEY || '').trim();
 
 export const isConfigured =
   /^https?:\/\//.test(SUPABASE_URL) && !SUPABASE_URL.includes('SEU-PROJETO') && !SUPABASE_KEY.startsWith('COLE-AQUI');
@@ -18,7 +25,7 @@ export const supabase = createClient(
   }
 );
 
-const PUBLIC_BASE = `${SUPABASE_URL.replace(/\/$/, '')}/storage/v1/object/public/media/`;
+const PUBLIC_BASE = `${SUPABASE_URL}/storage/v1/object/public/media/`;
 
 // URL pública de um arquivo do bucket "media"
 export function mediaUrl(path) {

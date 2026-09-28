@@ -1,18 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Type, Images, Palette, Trash2, ChevronRight } from 'lucide-react';
+import { X, Type, Images, Palette, Trash2, ChevronRight, Music2 } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
+import MusicPicker from '../components/MusicPicker';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { prepareImage, renderStory, STORY_BACKGROUNDS, STORY_FONT, STORY_W } from '../lib/media';
 import { emit } from '../lib/events';
 import { pageCache } from '../lib/storage';
+import { clipOf, musicForDb, musicLabel, player } from '../lib/music';
+import { drawMusicSticker, loadArtwork, nextStickerStyle } from '../lib/musicSticker';
 import * as api from '../lib/api';
 
 const COLORS = ['#ffffff', '#000000', '#f43f5e', '#f97316', '#facc15', '#22c55e', '#06b6d4', '#8b5cf6', '#d946ef'];
 const ASPECT = 9 / 16;
+const EDITOR_MUSIC = 'story-editor';
 
 function TextEditor({ initial, onDone, onDelete, scale }) {
   const [text, setText] = useState(initial.text || '');
@@ -88,7 +92,58 @@ export default function CreateStory() {
   const [editing, setEditing] = useState(null);
   const [scale, setScale] = useState(0.35);
   const [busy, setBusy] = useState(false);
+  const [music, setMusic] = useState(null);
+  const [musicOpen, setMusicOpen] = useState(false);
+  const [sticker, setSticker] = useState(null); // { x, y, style }
+  const [art, setArt] = useState(null);
+  const [stickerImg, setStickerImg] = useState(null); // { canvas, url }
   const drag = useRef(null);
+
+  // capa da música (para o adesivo)
+  useEffect(() => {
+    let alive = true;
+    setArt(null);
+    if (music?.artwork) loadArtwork(music.artwork).then((img) => alive && setArt(img));
+    return () => {
+      alive = false;
+    };
+  }, [music?.artwork]);
+
+  // desenha o adesivo igual ao que vai para o story
+  const stickerStyle = sticker?.style;
+  useEffect(() => {
+    if (!music || !stickerStyle) {
+      setStickerImg(null);
+      return;
+    }
+    const canvas = drawMusicSticker(music, stickerStyle, art);
+    let url;
+    try {
+      url = canvas.toDataURL('image/png');
+    } catch {
+      // se a capa "sujou" o canvas, desenha sem ela
+      const plain = drawMusicSticker(music, stickerStyle, null);
+      setStickerImg({ canvas: plain, url: plain.toDataURL('image/png') });
+      return;
+    }
+    setStickerImg({ canvas, url });
+  }, [music, stickerStyle, art]);
+
+  // toca o trecho escolhido enquanto edita (o seletor toca o dele quando está aberto)
+  useEffect(() => {
+    if (!music || musicOpen) {
+      player.release(EDITOR_MUSIC);
+      return;
+    }
+    player.request(EDITOR_MUSIC, clipOf(music));
+  }, [music, musicOpen]);
+  useEffect(() => () => player.release(EDITOR_MUSIC), []);
+
+  const chooseMusic = (m, { sticker: show } = {}) => {
+    setMusic(m);
+    if (!m || !show) setSticker(null);
+    else setSticker((st) => st || { x: 0.5, y: 0.74, style: 'light' });
+  };
 
   useEffect(() => {
     const el = frame.current;
@@ -126,6 +181,7 @@ export default function CreateStory() {
     else setTexts((xs) => [...xs, { ...t, id: Date.now(), x: 0.5, y: 0.42 }]);
   };
 
+  // arrastar textos e o adesivo de música (id 'sticker')
   const onTextDown = (e, t) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -141,16 +197,20 @@ export default function CreateStory() {
     const h = frame.current.clientHeight;
     const x = Math.max(0.05, Math.min(0.95, d.x + dx / w));
     const y = Math.max(0.04, Math.min(0.96, d.y + dy / h));
-    setTexts((xs) => xs.map((t) => (t.id === d.id ? { ...t, x, y } : t)));
+    if (d.id === 'sticker') setSticker((st) => (st ? { ...st, x, y } : st));
+    else setTexts((xs) => xs.map((t) => (t.id === d.id ? { ...t, x, y } : t)));
   };
   const onTextUp = (t) => {
     const d = drag.current;
     drag.current = null;
-    if (d && !d.moved) setEditing(t);
+    if (!d || d.moved) return;
+    // toque no adesivo troca o estilo; toque no texto abre a edição
+    if (t.id === 'sticker') setSticker((st) => (st ? { ...st, style: nextStickerStyle(st.style) } : st));
+    else setEditing(t);
   };
 
   const close = async () => {
-    if (image || texts.length) {
+    if (image || texts.length || music) {
       const ok = await confirm({ title: 'Descartar story?', confirmText: 'Descartar', danger: true });
       if (!ok) return;
     }
@@ -158,8 +218,8 @@ export default function CreateStory() {
   };
 
   const share = async () => {
-    if (!image && !texts.length) {
-      toast('Escolha uma foto ou escreva um texto');
+    if (!image && !texts.length && !music) {
+      toast('Escolha uma foto, escreva um texto ou coloque uma música');
       return;
     }
     setBusy(true);
@@ -170,9 +230,17 @@ export default function CreateStory() {
         crop: image ? cropRect(image, ASPECT, crop) : null,
         gradient: STORY_BACKGROUNDS[gi],
         texts,
+        stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
       path = await api.uploadImage(uid, active.id, 'stories', blob);
-      await api.createStory({ character: active.id, path, width, height });
+      await api.createStory({
+        character: active.id,
+        path,
+        width,
+        height,
+        music: music ? musicForDb(music, { sticker: sticker ? { x: sticker.x, y: sticker.y, style: sticker.style } : null }) : null,
+      });
+      player.release(EDITOR_MUSIC);
       pageCache.delete(`tray:${active.id}`);
       emit('story:change');
       toast('Story publicado!');
@@ -201,6 +269,20 @@ export default function CreateStory() {
           >
             {!texts.length && <span>Toque para escrever</span>}
           </button>
+        )}
+
+        {music && sticker && stickerImg && (
+          <img
+            className="story-sticker"
+            src={stickerImg.url}
+            alt={`Música: ${musicLabel(music)}`}
+            draggable="false"
+            style={{ left: `${sticker.x * 100}%`, top: `${sticker.y * 100}%`, width: stickerImg.canvas.width * scale }}
+            onPointerDown={(e) => onTextDown(e, { id: 'sticker', ...sticker })}
+            onPointerMove={onTextMove}
+            onPointerUp={() => onTextUp({ id: 'sticker' })}
+            onPointerCancel={() => (drag.current = null)}
+          />
         )}
 
         {texts.map((t) => (
@@ -240,6 +322,14 @@ export default function CreateStory() {
             <button type="button" className="icon-btn icon-btn--light" onClick={() => setEditing({})} aria-label="Adicionar texto">
               <Type size={26} />
             </button>
+            <button
+              type="button"
+              className={`icon-btn icon-btn--light ${music ? 'is-on' : ''}`}
+              onClick={() => setMusicOpen(true)}
+              aria-label={music ? `Música: ${musicLabel(music)}` : 'Adicionar música'}
+            >
+              <Music2 size={25} />
+            </button>
             {!image && (
               <button type="button" className="icon-btn icon-btn--light" onClick={() => setGi((g) => (g + 1) % STORY_BACKGROUNDS.length)} aria-label="Trocar fundo">
                 <Palette size={26} />
@@ -267,6 +357,7 @@ export default function CreateStory() {
       </div>
 
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={pick} />
+      <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music && { ...music, sticker }} onChange={chooseMusic} story />
       {editing && (
         <TextEditor
           initial={editing}

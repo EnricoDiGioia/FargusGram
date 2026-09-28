@@ -59,7 +59,8 @@ create table if not exists public.posts (
   caption      text not null default '' check (char_length(caption) <= 2200),
   location     text not null default '' check (char_length(location) <= 100),
   created_at   timestamptz not null default now(),
-  edited_at    timestamptz
+  edited_at    timestamptz,
+  music        jsonb
 );
 create index if not exists posts_created_idx on public.posts (created_at desc);
 create index if not exists posts_character_idx on public.posts (character_id, created_at desc);
@@ -122,7 +123,8 @@ create table if not exists public.stories (
   width        int not null check (width > 0),
   height       int not null check (height > 0),
   created_at   timestamptz not null default now(),
-  expires_at   timestamptz not null default (now() + interval '24 hours')
+  expires_at   timestamptz not null default (now() + interval '24 hours'),
+  music        jsonb
 );
 create index if not exists stories_character_idx on public.stories (character_id, created_at);
 create index if not exists stories_expires_idx on public.stories (expires_at);
@@ -180,6 +182,18 @@ create table if not exists public.messages (
   check (kind <> 'media' or media_path is not null)
 );
 create index if not exists messages_conversation_idx on public.messages (conversation_id, created_at desc);
+
+
+-- Música em posts e stories (prévia do Apple Music: título, artista, capa e trecho)
+-- (para quem instalou antes de setembro/2026, estas linhas adicionam as colunas)
+alter table public.posts   add column if not exists music jsonb;
+alter table public.stories add column if not exists music jsonb;
+alter table public.posts   drop constraint if exists posts_music_is_object;
+alter table public.posts   add  constraint posts_music_is_object
+  check (music is null or (jsonb_typeof(music) = 'object' and pg_column_size(music) <= 4096));
+alter table public.stories drop constraint if exists stories_music_is_object;
+alter table public.stories add  constraint stories_music_is_object
+  check (music is null or (jsonb_typeof(music) = 'object' and pg_column_size(music) <= 4096));
 
 
 -- ---------------------------------------------------------------------
@@ -463,10 +477,19 @@ begin
   return new;
 end $$;
 
-drop trigger if exists fargus_on_auth_user_created on auth.users;
-create trigger fargus_on_auth_user_created
-  after insert on auth.users
-  for each row execute function public.handle_new_user();
+-- Só cria o gatilho se ainda não existir: a tabela auth.users é do Supabase,
+-- e apagar um gatilho nela daria erro de permissão ao rodar o script de novo.
+do $$
+begin
+  if not exists (
+    select 1 from pg_trigger
+    where tgname = 'fargus_on_auth_user_created' and tgrelid = 'auth.users'::regclass
+  ) then
+    create trigger fargus_on_auth_user_created
+      after insert on auth.users
+      for each row execute function public.handle_new_user();
+  end if;
+end $$;
 
 -- Permite à tela de cadastro checar o código antes de criar a conta
 create or replace function public.check_invite_code(p_code text)
@@ -640,6 +663,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'location', p.location,
     'created_at', p.created_at,
     'edited_at', p.edited_at,
+    'music', p.music,
     'character', public._char(p.character_id),
     'media', coalesce((
       select jsonb_agg(jsonb_build_object(
@@ -695,12 +719,14 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
   from public.posts p where p.id = p_post;
 $$;
 
+drop function if exists public.create_post(uuid, text, text, jsonb, uuid[]);
 create or replace function public.create_post(
   p_character uuid,
   p_caption   text,
   p_location  text,
   p_media     jsonb,
-  p_tags      uuid[] default '{}'
+  p_tags      uuid[] default '{}',
+  p_music     jsonb  default null
 )
 returns uuid language plpgsql security invoker set search_path = '' as $$
 declare
@@ -713,8 +739,8 @@ begin
     raise exception 'Uma publicação precisa ter de 1 a 10 fotos';
   end if;
 
-  insert into public.posts (character_id, caption, location)
-  values (p_character, coalesce(p_caption, ''), coalesce(p_location, ''))
+  insert into public.posts (character_id, caption, location, music)
+  values (p_character, coalesce(p_caption, ''), coalesce(p_location, ''), p_music)
   returning id into v_post;
 
   for v_item in select value from jsonb_array_elements(p_media) loop
@@ -956,6 +982,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
         'stories', (
           select jsonb_agg(jsonb_build_object(
             'id', s.id, 'path', s.path, 'width', s.width, 'height', s.height, 'created_at', s.created_at,
+            'music', s.music,
             'seen', exists (select 1 from public.story_views v where v.story_id = s.id and v.character_id = p_viewer)
           ) order by s.created_at)
           from public.stories s where s.character_id = c.id and s.expires_at > now()
@@ -986,6 +1013,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'stories', coalesce((
       select jsonb_agg(jsonb_build_object(
         'id', s.id, 'path', s.path, 'width', s.width, 'height', s.height, 'created_at', s.created_at,
+        'music', s.music,
         'seen', exists (select 1 from public.story_views v where v.story_id = s.id and v.character_id = p_viewer)
       ) order by s.created_at)
       from public.stories s where s.character_id = p_character and s.expires_at > now()
@@ -1295,7 +1323,7 @@ grant select, insert, delete on public.characters          to authenticated;
 grant update (handle, name, bio, avatar_path) on public.characters to authenticated;
 grant select, insert, delete on public.follows             to authenticated;
 grant select, insert, delete on public.posts               to authenticated;
-grant update (caption, location, edited_at) on public.posts to authenticated;
+grant update (caption, location, edited_at, music) on public.posts to authenticated;
 grant select, insert, delete on public.post_media          to authenticated;
 grant select, insert, delete on public.post_tags           to authenticated;
 grant select, insert, delete on public.likes               to authenticated;
@@ -1329,7 +1357,7 @@ grant execute on function public.check_invite_code(text) to anon, authenticated;
 grant execute on function
   public.is_member(), public.is_admin(), public.owns_character(uuid), public.in_conversation(uuid),
   public._char(uuid), public._post_card(uuid, uuid), public._post_thumb(uuid),
-  public.create_post(uuid, text, text, jsonb, uuid[]),
+  public.create_post(uuid, text, text, jsonb, uuid[], jsonb),
   public.feed(uuid, timestamptz, int), public.get_post(uuid, uuid), public.explore(timestamptz, int),
   public.character_posts(uuid, timestamptz, int), public.tagged_posts(uuid, timestamptz, int),
   public.saved_posts(uuid, timestamptz, int), public.hashtag_posts(text, timestamptz, int),

@@ -277,7 +277,8 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 // texts: [{ text, x, y (0..1 do centro), size (px no canvas 1080), color, boxed }]
-export async function renderStory({ img, crop, gradient, filterId, texts }) {
+// stickers: [{ canvas, x, y }] (adesivos já desenhados em pixels do story)
+export async function renderStory({ img, crop, gradient, filterId, texts, stickers }) {
   const canvas = newCanvas(STORY_W, STORY_H);
   const ctx = canvas.getContext('2d');
   if (img && crop) {
@@ -293,6 +294,10 @@ export async function renderStory({ img, crop, gradient, filterId, texts }) {
     g.addColorStop(1, b);
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, STORY_W, STORY_H);
+  }
+
+  for (const st of stickers || []) {
+    ctx.drawImage(st.canvas, Math.round(st.x * STORY_W - st.canvas.width / 2), Math.round(st.y * STORY_H - st.canvas.height / 2));
   }
 
   for (const t of texts || []) {

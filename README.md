@@ -9,6 +9,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Feed com publicações de até 10 fotos, com recorte e filtros
 - Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
+- Música nos posts e nos stories: busca no catálogo do Apple Music, escolha do trecho de 15 segundos e adesivo da música no story
 - Perfis, seguidores, marcação de personagens nas fotos, @menções e #hashtags
 - Explorar, com busca de personagens e hashtags
 - Notificações de curtidas, comentários, respostas, menções, marcações e seguidores
@@ -40,6 +41,8 @@ Leva uns 20 minutos, uma vez só.
 3. No fim deve aparecer `FargusGram: banco configurado com sucesso ✔`.
 
 O Supabase pode avisar que o script tem comandos "destrutivos". Pode confirmar: ele só apaga e recria as próprias regras de segurança, nunca os seus dados. O script pode ser rodado de novo quando quiser.
+
+Quem instala do zero não precisa rodar mais nada: o `setup.sql` já inclui todas as atualizações da pasta `supabase/atualizacoes/`.
 
 ### 3. Desligar a confirmação de e-mail
 
@@ -98,6 +101,30 @@ git reset --hard origin/main
 
 O próprio app mostra essas instruções na tela inicial para quem ainda não instalou.
 
+## Atualizações do banco
+
+Quando uma novidade do app precisa de algo novo no banco, ela vem num arquivo separado dentro de `supabase/atualizacoes/`. Quem já tinha o FargusGram funcionando roda esse arquivo uma vez:
+
+1. No Supabase, abra **SQL Editor** e clique em **New query**.
+2. Copie todo o conteúdo do arquivo, cole no editor e clique em **Run**.
+3. No fim aparece uma mensagem com ✔.
+
+Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema. Enquanto a atualização não for rodada, o resto do app continua funcionando normalmente; só a novidade avisa que falta atualizar o banco.
+
+| Arquivo | O que traz |
+| --- | --- |
+| `2026-09-musica.sql` | Música nos posts e nos stories |
+
+## Música
+
+- **Colocar música:** ao criar um post, toque em **Adicionar música**. No story, toque no ♫ do lado direito. Pesquise pelo nome da música ou do artista, toque no ▶ para ouvir e toque na música para escolher. Depois arraste a faixa para escolher o trecho de 15 segundos.
+- **Adesivo no story:** aparece sozinho e pode ser arrastado. Tocar nele troca o estilo (claro, escuro ou pílula). Para um story sem adesivo, desmarque **Mostrar adesivo** ao escolher o trecho.
+- **Ouvir:** a música do post toca quando ele aparece na tela, e a do story toca junto com ele (o story com música dura 15 segundos). O alto-falante na foto ou no topo do story liga e desliga o som, e o app lembra a escolha. Tocando no nome da música dá para abrir no Apple Music.
+- **iPhone e Android** só deixam um site tocar som depois do primeiro toque na tela. Se a música não começar sozinha, toque em qualquer lugar ou no aviso **Toque para ouvir a música**.
+- **Trocar ou tirar a música de um post:** no post, toque em ⋯ → **Editar**.
+
+As músicas são as prévias de 30 segundos do Apple Music, que qualquer site pode usar sem conta e sem pagar. O áudio vem direto da Apple, então não ocupa o espaço nem o tráfego do Supabase: o banco guarda só o nome, o artista e o trecho escolhido. Quem ouve gasta cerca de 1 MB de internet por música, e só quando ela toca.
+
 ## No dia a dia
 
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
@@ -112,6 +139,7 @@ O próprio app mostra essas instruções na tela inicial para quem ainda não in
 - **Fotos:** o Supabase grátis tem 1 GB. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories são apagados depois de 24 horas e liberam espaço.
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
 - **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
+- **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.
 - **Pausa por falta de uso:** o Supabase pausa projetos grátis depois de 7 dias sem uso. O robô "Manter o Supabase acordado" (`.github/workflows/keepalive.yml`) faz uma consulta a cada 3 dias para evitar isso. O GitHub desliga robôs agendados em repositórios públicos depois de 60 dias sem commits. Se acontecer, abra **Actions** → "Manter o Supabase acordado" → **Enable workflow**. Se o projeto pausar mesmo assim, entre no painel do Supabase e clique em **Restore project**. Os dados continuam lá.
 
 ## Privacidade
@@ -124,17 +152,18 @@ O próprio app mostra essas instruções na tela inicial para quem ainda não in
 
 - Edite os arquivos, faça commit e push. Em poucos minutos o site é atualizado, e o app no celular carrega a versão nova na próxima vez que for aberto.
 - Para rodar no computador: instale o [Node.js](https://nodejs.org) 22 ou mais novo, depois rode `npm install` e `npm run dev`. O terminal mostra também um endereço de rede, que abre no celular se ele estiver no mesmo Wi-Fi.
-- Se um dia o banco mudar, rode o SQL novo no SQL Editor do mesmo jeito.
+- Se uma mudança precisar de algo novo no banco, crie um arquivo em `supabase/atualizacoes/`, coloque a mesma mudança no `setup.sql` e rode o arquivo no SQL Editor (veja [Atualizações do banco](#atualizações-do-banco)).
 
 ## Onde fica cada coisa
 
 | Caminho | O que é |
 | --- | --- |
 | `supabase/setup.sql` | Banco de dados, regras de segurança e funções |
+| `supabase/atualizacoes/` | Atualizações do banco para quem já tinha o app funcionando |
 | `src/config.js` | URL e chave do Supabase |
 | `src/pages/` | As telas do app |
 | `src/components/` | Peças reutilizadas pelas telas |
-| `src/lib/` | Conexão com o Supabase, processamento de imagens e utilidades |
+| `src/lib/` | Conexão com o Supabase, processamento de imagens, música e utilidades |
 | `src/styles/app.css` | Visual (cores, claro e escuro) |
 | `public/` | Ícones, manifesto de instalação e service worker (cache) |
 | `.github/workflows/` | Publicação automática e robô contra a pausa |

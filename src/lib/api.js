@@ -24,6 +24,8 @@ export function errorMessage(err) {
   if (/Payload too large|exceeded the maximum allowed size/i.test(msg)) return 'Arquivo grande demais.';
   if (/mime type|invalid_mime_type/i.test(msg)) return 'Tipo de arquivo não suportado. Use uma foto JPG ou PNG.';
   if (/JWT|token is expired|invalid claim/i.test(msg)) return 'Sua sessão expirou. Entre de novo.';
+  if ((code === 'PGRST202' && /create_post/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /music/.test(msg)))
+    return 'O banco ainda não tem a atualização de música. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-musica.sql no SQL Editor do Supabase (veja o README).';
   return msg || 'Algo deu errado.';
 }
 
@@ -132,22 +134,22 @@ export const hashtagPosts = (tag, before) => rpc('hashtag_posts', { p_tag: tag, 
 export const getPost = (id, viewer) => rpc('get_post', { p_post: id, p_viewer: viewer });
 export const likers = (post, viewer) => rpc('post_likers', { p_post: post, p_viewer: viewer });
 
-export const createPost = ({ character, caption, location, media, tags }) =>
+export const createPost = ({ character, caption, location, media, tags, music }) =>
   rpc('create_post', {
     p_character: character,
     p_caption: caption || '',
     p_location: location || '',
     p_media: media,
     p_tags: tags || [],
+    // só manda a música quando tem, assim o app funciona mesmo antes da atualização do banco
+    ...(music ? { p_music: music } : {}),
   });
 
-export async function updatePost(id, { caption, location }) {
-  unwrap(
-    await supabase
-      .from('posts')
-      .update({ caption, location, edited_at: new Date().toISOString() })
-      .eq('id', id)
-  );
+// music: undefined = não mexe; null = remove; objeto = troca
+export async function updatePost(id, { caption, location, music }) {
+  const fields = { caption, location, edited_at: new Date().toISOString() };
+  if (music !== undefined) fields.music = music;
+  unwrap(await supabase.from('posts').update(fields).eq('id', id));
 }
 
 export async function deletePost(post) {
@@ -208,10 +210,10 @@ export const characterStories = (character, viewer) =>
   rpc('character_stories', { p_character: character, p_viewer: viewer });
 export const storyViewers = (story) => rpc('story_viewers', { p_story: story });
 
-export async function createStory({ character, path, width, height }) {
-  return unwrap(
-    await supabase.from('stories').insert({ character_id: character, path, width, height }).select('id').single()
-  );
+export async function createStory({ character, path, width, height, music }) {
+  const row = { character_id: character, path, width, height };
+  if (music) row.music = music;
+  return unwrap(await supabase.from('stories').insert(row).select('id').single());
 }
 export async function markStorySeen(story, character) {
   await supabase

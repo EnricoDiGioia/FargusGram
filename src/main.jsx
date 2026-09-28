@@ -6,10 +6,12 @@ import App from './App';
 import { initPwa, registerServiceWorker } from './lib/pwa';
 import { applySavedTheme } from './lib/theme';
 import { startCacheSync } from './lib/sync';
+import { initAudioUnlock } from './lib/music';
 
 applySavedTheme();
 initPwa();
 startCacheSync();
+initAudioUnlock();
 registerServiceWorker();
 
 createRoot(document.getElementById('root')).render(
