@@ -2,6 +2,7 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useState } 
 import { supabase, isConfigured } from '../lib/supabase';
 import * as api from '../lib/api';
 import { local, pageCache } from '../lib/storage';
+import { pushLogout, setAppBadge } from '../lib/push';
 
 const SessionContext = createContext(null);
 
@@ -64,6 +65,8 @@ export function SessionProvider({ children }) {
   }, []);
 
   const signOut = useCallback(async () => {
+    await pushLogout();
+    setAppBadge(0);
     await api.auth.signOut();
     local.set('fg-active', null);
     pageCache.clear();

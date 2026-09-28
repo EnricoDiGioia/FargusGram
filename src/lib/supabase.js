@@ -2,11 +2,11 @@ import { createClient } from '@supabase/supabase-js';
 import { SUPABASE_URL as RAW_URL, SUPABASE_KEY as RAW_KEY } from '../config';
 
 // Aceita a URL copiada com barra no fim ou com /rest/v1 (acontece bastante)
-const SUPABASE_URL = String(RAW_URL || '')
+export const SUPABASE_URL = String(RAW_URL || '')
   .trim()
   .replace(/\/+$/, '')
-  .replace(/\/(rest|auth|storage)\/v1$/, '');
-const SUPABASE_KEY = String(RAW_KEY || '').trim();
+  .replace(/\/(rest|auth|storage|functions)\/v1$/, '');
+export const SUPABASE_KEY = String(RAW_KEY || '').trim();
 
 export const isConfigured =
   /^https?:\/\//.test(SUPABASE_URL) && !SUPABASE_URL.includes('SEU-PROJETO') && !SUPABASE_KEY.startsWith('COLE-AQUI');

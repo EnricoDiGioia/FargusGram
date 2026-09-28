@@ -73,8 +73,15 @@ export function registerServiceWorker() {
           if (w.state === 'installed' && navigator.serviceWorker.controller) notify(w);
         });
       });
+      // recarrega só quando uma versão nova assume (na primeira visita não,
+      // senão a pessoa perde o que estava digitando no login)
       let reloaded = false;
+      let hadController = !!navigator.serviceWorker.controller;
       navigator.serviceWorker.addEventListener('controllerchange', () => {
+        if (!hadController) {
+          hadController = true;
+          return;
+        }
         if (reloaded) return;
         reloaded = true;
         window.location.reload();

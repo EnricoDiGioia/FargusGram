@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Navigate, Outlet, Route, Routes } from 'react-router';
+import { HashRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { SessionProvider, useSession } from './state/session';
 import { UnreadProvider } from './state/unread';
 import { ToastProvider, useToast } from './state/toast';
@@ -10,6 +10,8 @@ import ViewportWatcher from './components/ViewportWatcher';
 import { RiftMark } from './components/Brand';
 import { isConfigured } from './lib/supabase';
 import { onSwUpdate } from './lib/pwa';
+import { syncPush } from './lib/push';
+import { emit } from './lib/events';
 import * as api from './lib/api';
 
 import Login from './pages/Login';
@@ -132,6 +134,50 @@ function Gate() {
   );
 }
 
+// Notificações no celular: abrir no lugar certo e no personagem certo
+function PushBridge() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const { uid, characters, active, setActive } = useSession();
+
+  // confere a assinatura deste aparelho ao abrir o app
+  useEffect(() => {
+    if (uid) syncPush(uid);
+  }, [uid]);
+
+  // mensagens do service worker (aviso chegou / tocaram no aviso)
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (e) => {
+      const m = e.data || {};
+      if (m.type === 'fg-push') emit('unread:refresh');
+      if (m.type === 'fg-open' && typeof m.url === 'string') {
+        try {
+          const hash = new URL(m.url).hash;
+          if (hash.startsWith('#/')) navigate(hash.slice(1));
+        } catch {
+          /* endereço estranho: ignora */
+        }
+      }
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, [navigate]);
+
+  // ?como=<personagem>: o aviso era para um personagem específico (ex.: NPC do mestre)
+  useEffect(() => {
+    const params = new URLSearchParams(location.search);
+    const id = params.get('como');
+    if (!id) return;
+    if (characters.some((c) => c.id === id) && active?.id !== id) setActive(id);
+    params.delete('como');
+    const rest = params.toString();
+    navigate({ pathname: location.pathname, search: rest ? `?${rest}` : '' }, { replace: true });
+  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  return null;
+}
+
 function Shell() {
   return (
     <div className="app">
@@ -154,6 +200,7 @@ function AppRoutes() {
     <Suspense fallback={<PageLoader />}>
       <ScrollManager />
       <ViewportWatcher />
+      <PushBridge />
       <Routes>
         <Route element={<Shell />}>
           <Route index element={<Home />} />

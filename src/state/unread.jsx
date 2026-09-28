@@ -4,6 +4,7 @@ import * as api from '../lib/api';
 import { useSession } from './session';
 import { useInterval } from '../lib/hooks';
 import { emit, on } from '../lib/events';
+import { setAppBadge } from '../lib/push';
 
 const UnreadContext = createContext({ counts: {}, refresh: () => {} });
 
@@ -64,6 +65,12 @@ export function UnreadProvider({ children }) {
   }, [uid, refresh]);
 
   useInterval(refresh, 30000, !!uid);
+
+  // número no ícone do app (o mesmo que a notificação no celular mostra)
+  useEffect(() => {
+    const total = Object.values(counts || {}).reduce((acc, v) => acc + (v.notifications || 0) + (v.messages || 0), 0);
+    setAppBadge(total);
+  }, [counts]);
 
   return <UnreadContext.Provider value={{ counts, refresh }}>{children}</UnreadContext.Provider>;
 }

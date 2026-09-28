@@ -1,5 +1,6 @@
 // Todas as conversas com o Supabase passam por aqui.
 import { supabase } from './supabase';
+import { pokePush } from './push';
 
 // ---------------------------------------------------------------------
 // Erros em português
@@ -114,6 +115,7 @@ export const followList = (character, viewer, kind) =>
 export async function follow(follower, followee) {
   const { error } = await supabase.from('follows').insert({ follower_id: follower, followee_id: followee });
   if (error && error.code !== '23505') throw error;
+  if (!error) pokePush();
 }
 export async function unfollow(follower, followee) {
   unwrap(await supabase.from('follows').delete().eq('follower_id', follower).eq('followee_id', followee));
@@ -134,8 +136,8 @@ export const hashtagPosts = (tag, before) => rpc('hashtag_posts', { p_tag: tag, 
 export const getPost = (id, viewer) => rpc('get_post', { p_post: id, p_viewer: viewer });
 export const likers = (post, viewer) => rpc('post_likers', { p_post: post, p_viewer: viewer });
 
-export const createPost = ({ character, caption, location, media, tags, music }) =>
-  rpc('create_post', {
+export async function createPost({ character, caption, location, media, tags, music }) {
+  const id = await rpc('create_post', {
     p_character: character,
     p_caption: caption || '',
     p_location: location || '',
@@ -144,6 +146,9 @@ export const createPost = ({ character, caption, location, media, tags, music })
     // só manda a música quando tem, assim o app funciona mesmo antes da atualização do banco
     ...(music ? { p_music: music } : {}),
   });
+  pokePush();
+  return id;
+}
 
 // music: undefined = não mexe; null = remove; objeto = troca
 export async function updatePost(id, { caption, location, music }) {
@@ -165,6 +170,7 @@ export async function deletePost(post) {
 export async function like(post, character) {
   const { error } = await supabase.from('likes').insert({ post_id: post, character_id: character });
   if (error && error.code !== '23505') throw error;
+  if (!error) pokePush();
 }
 export async function unlike(post, character) {
   unwrap(await supabase.from('likes').delete().eq('post_id', post).eq('character_id', character));
@@ -183,13 +189,15 @@ export async function unsave(post, character) {
 export const comments = (post, viewer) => rpc('post_comments', { p_post: post, p_viewer: viewer });
 
 export async function addComment({ post, character, body, parent }) {
-  return unwrap(
+  const row = unwrap(
     await supabase
       .from('comments')
       .insert({ post_id: post, character_id: character, body: body.trim(), parent_id: parent || null })
       .select('id, created_at')
       .single()
   );
+  pokePush();
+  return row;
 }
 export async function deleteComment(id) {
   unwrap(await supabase.from('comments').delete().eq('id', id));
@@ -197,6 +205,7 @@ export async function deleteComment(id) {
 export async function likeComment(comment, character) {
   const { error } = await supabase.from('comment_likes').insert({ comment_id: comment, character_id: character });
   if (error && error.code !== '23505') throw error;
+  if (!error) pokePush();
 }
 export async function unlikeComment(comment, character) {
   unwrap(await supabase.from('comment_likes').delete().eq('comment_id', comment).eq('character_id', character));
@@ -213,7 +222,9 @@ export const storyViewers = (story) => rpc('story_viewers', { p_story: story });
 export async function createStory({ character, path, width, height, music }) {
   const row = { character_id: character, path, width, height };
   if (music) row.music = music;
-  return unwrap(await supabase.from('stories').insert(row).select('id').single());
+  const created = unwrap(await supabase.from('stories').insert(row).select('id').single());
+  pokePush();
+  return created;
 }
 export async function markStorySeen(story, character) {
   await supabase
@@ -269,7 +280,9 @@ export async function sendMessage({ conversation, sender, kind = 'text', body, m
   if (media) Object.assign(row, { media_path: media.path, media_width: media.width, media_height: media.height });
   if (post) row.post_id = post;
   if (story) row.story_id = story;
-  return unwrap(await supabase.from('messages').insert(row).select('id, created_at').single());
+  const created = unwrap(await supabase.from('messages').insert(row).select('id, created_at').single());
+  pokePush();
+  return created;
 }
 export async function markConversationRead(conv, character) {
   await supabase

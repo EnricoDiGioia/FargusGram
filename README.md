@@ -13,6 +13,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Perfis, seguidores, marcação de personagens nas fotos, @menções e #hashtags
 - Explorar, com busca de personagens e hashtags
 - Notificações de curtidas, comentários, respostas, menções, marcações e seguidores
+- Notificações no celular (mesmo com o app fechado), com número no ícone do app e escolha do que receber
 - Direct com conversas individuais e grupos, inclusive com fotos
 - Cada jogador pode ter vários personagens e alternar entre eles. O mestre usa isso para os NPCs.
 - Selo de verificado, dado pelo admin
@@ -101,6 +102,8 @@ git reset --hard origin/main
 
 O próprio app mostra essas instruções na tela inicial para quem ainda não instalou.
 
+Para os avisos chegarem no celular, falta criar a função `push` no Supabase: veja [Notificações no celular](#notificações-no-celular).
+
 ## Atualizações do banco
 
 Quando uma novidade do app precisa de algo novo no banco, ela vem num arquivo separado dentro de `supabase/atualizacoes/`. Quem já tinha o FargusGram funcionando roda esse arquivo uma vez:
@@ -114,6 +117,36 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | Arquivo | O que traz |
 | --- | --- |
 | `2026-09-musica.sql` | Música nos posts e nos stories |
+| `2026-09-notificacoes.sql` | Notificações no celular (depois, crie a função `push`, veja abaixo) |
+
+## Notificações no celular
+
+Os avisos chegam no celular mesmo com o app fechado, como no Instagram: mensagens do Direct, comentários e respostas, menções e marcações, curtidas, novos seguidores e publicações de quem você segue. Stories de quem você segue também, mas esse aviso começa desligado.
+
+### Ligar (uma vez só, pelo admin)
+
+1. Rode a atualização `supabase/atualizacoes/2026-09-notificacoes.sql` no SQL Editor, como explicado em [Atualizações do banco](#atualizações-do-banco). Quem instala do zero já tem isso no `setup.sql`.
+2. No Supabase, abra **Edge Functions** no menu lateral e clique em **Deploy a new function** → **Via Editor**.
+3. Apague o código de exemplo e cole todo o arquivo `supabase/functions/push/index.ts`. O jeito mais fácil de copiar é abrir [este link](https://raw.githubusercontent.com/EnricoDiGioia/FargusGram/main/supabase/functions/push/index.ts), apertar Ctrl+A e Ctrl+C.
+4. No campo do nome da função, escreva `push`, exatamente assim, e clique em **Deploy function**. Leva uns 30 segundos.
+5. Na página da função, abra **Details** e desligue **Verify JWT with legacy secret** (em painéis mais antigos aparece como **Enforce JWT Verification**). Salve. A função confere sozinha se quem chamou está logado no app.
+
+A função não precisa de nenhuma configuração: as chaves que identificam o FargusGram para o Google, a Apple e a Mozilla são criadas na primeira vez e ficam guardadas no banco.
+
+### Ativar no celular (cada pessoa)
+
+1. Abra **Configurações** → **Notificações** e ligue **Receber neste aparelho**. O celular pergunta se pode mandar notificações: toque em **Permitir**.
+2. Toque em **Enviar notificação de teste**. O aviso chega em alguns segundos.
+3. Logo abaixo dá para escolher o que receber. Quem tem vários personagens pode desligar os avisos de alguns deles, o que é útil para os NPCs do mestre.
+
+A tela de Atividade também convida a ativar.
+
+- **iPhone:** só funciona com o app instalado na tela de início (iOS 16.4 ou mais novo) e aberto pelo ícone, não pelo Safari.
+- **Android:** funciona no Chrome, com ou sem o app instalado.
+- **Bloqueou sem querer?** Libere nas configurações do celular: no iPhone, **Ajustes** → **Notificações** → **FargusGram**. No Android, segure o ícone do app → **Informações do app** → **Notificações**.
+- **Saiu da conta?** O aparelho para de receber os avisos daquela conta.
+
+Tocar num aviso abre o post, a conversa ou o perfil certo, já no personagem que recebeu. Se algo não chegar, o botão de teste mostra o motivo, e os detalhes ficam em **Edge Functions** → **push** → **Logs**, no Supabase.
 
 ## Música
 
@@ -140,6 +173,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
 - **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
 - **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.
+- **Notificações:** cada curtida, comentário ou mensagem chama a função `push` uma vez. O plano grátis tem 500 mil chamadas por mês, bem mais do que um grupo de amigos usa.
 - **Pausa por falta de uso:** o Supabase pausa projetos grátis depois de 7 dias sem uso. O robô "Manter o Supabase acordado" (`.github/workflows/keepalive.yml`) faz uma consulta a cada 3 dias para evitar isso. O GitHub desliga robôs agendados em repositórios públicos depois de 60 dias sem commits. Se acontecer, abra **Actions** → "Manter o Supabase acordado" → **Enable workflow**. Se o projeto pausar mesmo assim, entre no painel do Supabase e clique em **Restore project**. Os dados continuam lá.
 
 ## Privacidade
@@ -147,6 +181,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - Publicações, perfis, comentários e mensagens só aparecem para quem entrou com o código de convite.
 - As fotos ficam num bucket público do Supabase. O endereço de cada foto é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
 - Os e-mails dos jogadores só aparecem para os admins.
+- As notificações no celular passam pelos servidores de push do Google, da Apple ou da Mozilla (depende do celular), mas vão criptografadas: só o aparelho de quem recebe consegue ler o texto.
 
 ## Mudar o app depois
 
@@ -160,6 +195,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 | --- | --- |
 | `supabase/setup.sql` | Banco de dados, regras de segurança e funções |
 | `supabase/atualizacoes/` | Atualizações do banco para quem já tinha o app funcionando |
+| `supabase/functions/push/` | Função do Supabase que manda as notificações para os celulares |
 | `src/config.js` | URL e chave do Supabase |
 | `src/pages/` | As telas do app |
 | `src/components/` | Peças reutilizadas pelas telas |
@@ -171,6 +207,5 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 
 ## Ideias para depois
 
-- Notificações push no celular (precisa de uma Edge Function no Supabase)
 - Vídeos curtos (ocupam bastante do 1 GB grátis)
 - Destaques de stories no perfil

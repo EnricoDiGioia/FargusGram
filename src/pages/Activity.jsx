@@ -5,6 +5,7 @@ import { TopBar, Spinner, EmptyState, ErrorBox, Handle } from '../components/ui'
 import Avatar from '../components/Avatar';
 import { FollowButton } from '../components/CharacterRow';
 import PullToRefresh from '../components/PullToRefresh';
+import PushPrompt from '../components/PushPrompt';
 import { useSession } from '../state/session';
 import { useUnread } from '../state/unread';
 import { useInfinite, useOnVisible } from '../lib/hooks';
@@ -101,6 +102,7 @@ export default function Activity() {
           refreshUnread();
         }}
       >
+        <PushPrompt />
         {list.error && <ErrorBox onRetry={list.reload}>{list.error}</ErrorBox>}
         {!list.loading && !list.error && list.items.length === 0 && (
           <EmptyState icon={<Heart size={44} strokeWidth={1.4} />} title="Nenhuma notificação">

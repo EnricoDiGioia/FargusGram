@@ -2,8 +2,9 @@
 // - abre rápido (guarda os arquivos do app)
 // - guarda as fotos já vistas (economiza internet e o limite grátis do Supabase)
 // - nunca guarda respostas da API (feed, curtidas etc. vêm sempre frescas)
+// - mostra as notificações no celular e abre o app no lugar certo ao tocar
 
-const VERSION = 'fg-v1';
+const VERSION = 'fg-v2';
 const APP_CACHE = `${VERSION}-app`;
 const IMG_CACHE = `${VERSION}-img`;
 const MAX_IMAGES = 400;
@@ -94,4 +95,91 @@ self.addEventListener('fetch', (event) => {
       })()
     );
   }
+});
+
+// ---------------------------------------------------------------------
+// Notificações no celular
+// ---------------------------------------------------------------------
+// O Safari (iPhone e Mac) exige mostrar um aviso para cada notificação recebida
+const MUST_SHOW = /AppleWebKit/.test(self.navigator.userAgent) && !/Chrome|Chromium|Android|Edg/.test(self.navigator.userAgent);
+
+function appUrl(path) {
+  return new URL(path || './', self.registration.scope).href;
+}
+
+// "#/direct/123?como=abc" -> "#/direct/123"
+function routeOf(url) {
+  try {
+    return new URL(url).hash.split('?')[0];
+  } catch {
+    return '';
+  }
+}
+
+async function setBadge(n) {
+  try {
+    if (typeof n !== 'number' || !self.navigator.setAppBadge) return;
+    if (n > 0) await self.navigator.setAppBadge(n);
+    else await self.navigator.clearAppBadge();
+  } catch {
+    /* nem todo aparelho tem número no ícone */
+  }
+}
+
+self.addEventListener('push', (event) => {
+  let data = {};
+  try {
+    data = event.data ? event.data.json() : {};
+  } catch {
+    data = { body: event.data ? event.data.text() : '' };
+  }
+  const url = appUrl(data.url || './');
+  event.waitUntil(
+    (async () => {
+      await setBadge(data.badge);
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      wins.forEach((c) => c.postMessage({ type: 'fg-push', data }));
+      // quem já está olhando essa conversa/post não precisa do aviso
+      const viewing = wins.some((c) => c.visibilityState === 'visible' && c.focused && routeOf(c.url) === routeOf(url));
+      if (viewing && !MUST_SHOW) return;
+      await self.registration.showNotification(data.title || 'FargusGram', {
+        body: data.body || '',
+        icon: appUrl('./icons/icon-192.png'),
+        badge: appUrl('./icons/badge-96.png'),
+        tag: data.tag || undefined,
+        renotify: !!data.tag,
+        timestamp: Date.now(),
+        data: { url },
+      });
+    })()
+  );
+});
+
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = event.notification.data?.url || appUrl('./');
+  event.waitUntil(
+    (async () => {
+      const wins = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+      const win = wins.find((c) => c.url.startsWith(self.registration.scope)) || wins[0];
+      if (win) {
+        try {
+          await win.focus();
+        } catch {
+          /* alguns navegadores não deixam */
+        }
+        win.postMessage({ type: 'fg-open', url });
+        return;
+      }
+      await self.clients.openWindow(url);
+    })()
+  );
+});
+
+// O navegador trocou a assinatura: assina de novo com a mesma chave.
+// O app manda a nova para o servidor na próxima vez que abrir.
+self.addEventListener('pushsubscriptionchange', (event) => {
+  const key = event.oldSubscription?.options?.applicationServerKey;
+  if (!key) return;
+  event.waitUntil(self.registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: key }).catch(() => {}));
 });

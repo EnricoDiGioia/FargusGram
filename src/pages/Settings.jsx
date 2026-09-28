@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { Plus, Shield, LogOut, ChevronRight, Smartphone, Moon, KeyRound, UserRound } from 'lucide-react';
 import { TopBar, BackButton, Button, Handle } from '../components/ui';
@@ -8,6 +8,8 @@ import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { getTheme, setTheme } from '../lib/theme';
 import * as api from '../lib/api';
+
+const PushSettings = lazy(() => import('../components/PushSettings'));
 
 export default function Settings() {
   const { me, session, characters, active, setActive, isAdmin, signOut, refreshMe } = useSession();
@@ -101,6 +103,10 @@ export default function Settings() {
           ))}
         </div>
       </section>
+
+      <Suspense fallback={null}>
+        <PushSettings />
+      </Suspense>
 
       <section className="settings-section">
         <h3 className="section-title">
