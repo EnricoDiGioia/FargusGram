@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Image as ImageIcon, Info, Copy, Trash2, LogOut, Pencil } from 'lucide-react';
+import { Image as ImageIcon, Info, Copy, Trash2, LogOut, Pencil, Reply, X } from 'lucide-react';
 import { BackButton, IconButton, Spinner, EmptyState, Handle, Sheet, SheetItem, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import RichText from '../components/RichText';
@@ -18,6 +18,25 @@ import { prepareImage, renderDmImage } from '../lib/media';
 import * as api from '../lib/api';
 
 const GAP = 30 * 60 * 1000;
+const SWIPE = 56; // quanto arrastar para responder (px)
+
+// Texto curto da mensagem citada
+function quoteText(r) {
+  if (!r || r.deleted) return 'Mensagem apagada';
+  if (r.kind === 'media') return 'Foto';
+  if (r.kind === 'post') return 'Publicação';
+  return r.body || '';
+}
+
+// "Você respondeu a lara.explora", "lara.explora respondeu a você"...
+function replyCaption(m, reply, meId, senderHandle) {
+  const mine = m.sender_id === meId;
+  const who = mine ? 'Você' : senderHandle || 'Alguém';
+  if (!reply || reply.deleted) return `${who} respondeu a uma mensagem`;
+  if (reply.sender_id === m.sender_id) return mine ? 'Você respondeu a si mesmo' : `${who} respondeu a si mesmo`;
+  const target = reply.sender_id === meId ? 'você' : reply.handle || 'alguém';
+  return `${who} respondeu a ${target}`;
+}
 
 function PostShare({ post }) {
   if (!post) return <div className="msg-card msg-card--gone">Publicação indisponível</div>;
@@ -57,11 +76,14 @@ export default function Chat() {
   const [renaming, setRenaming] = useState(null);
   const [lightbox, setLightbox] = useState(null);
   const [uploading, setUploading] = useState(false);
+  const [replyTo, setReplyTo] = useState(null); // mensagem que está sendo respondida
+  const [flashId, setFlashId] = useState(null);
+  const pendingJump = useRef(null);
+  const swipe = useRef(null);
   const msgsRef = useRef(null);
   msgsRef.current = msgs;
   const stick = useRef(true);
   const keepOffset = useRef(null);
-
 
   const scrollToBottom = (smooth) => {
     const el = scroller.current;
@@ -87,6 +109,7 @@ export default function Chat() {
     let alive = true;
     setMsgs(null);
     setInfo(undefined);
+    setReplyTo(null);
     (async () => {
       await loadInfo();
       try {
@@ -152,6 +175,101 @@ export default function Chat() {
     } else if (stick.current) scrollToBottom(false);
   }, [msgs]);
 
+  // ---------- responder uma mensagem ----------
+  const startReply = (m) => {
+    setMenuMsg(null);
+    const handle = m.sender_id === active.id ? active.handle : info?.members?.find((x) => x.id === m.sender_id)?.handle || '';
+    setReplyTo({
+      id: m.id,
+      sender_id: m.sender_id,
+      handle,
+      kind: m.kind,
+      body: m.body ? m.body.slice(0, 160) : null,
+      media_path: m.media_path || null,
+      created_at: m.created_at,
+    });
+    setTimeout(() => inputRef.current?.focus(), 60);
+  };
+
+  // arrastar a mensagem para a direita (como no Instagram)
+  const swipeStart = (e, m) => {
+    if (m.pending || m.failed || e.pointerType === 'mouse') return;
+    swipe.current = { x: e.clientX, y: e.clientY, d: 0, on: false, row: e.currentTarget.closest('.msg-row'), el: e.currentTarget, pid: e.pointerId };
+  };
+  const swipeMove = (e) => {
+    const s = swipe.current;
+    if (!s) return;
+    const dx = e.clientX - s.x;
+    const dy = e.clientY - s.y;
+    if (!s.on) {
+      if (Math.abs(dy) > 12) {
+        swipe.current = null;
+        return;
+      }
+      if (dx < 12 || dx < Math.abs(dy) * 1.5) return;
+      s.on = true;
+      try {
+        s.el.setPointerCapture(s.pid);
+      } catch {
+        /* sem captura: segue assim mesmo */
+      }
+    }
+    const d = Math.max(0, Math.min(84, dx * 0.8));
+    if (d >= SWIPE && s.d < SWIPE) navigator.vibrate?.(8);
+    s.d = d;
+    s.row?.classList.add('is-swiping');
+    s.row?.style.setProperty('--swipe', String(d));
+  };
+  const swipeEnd = (m) => {
+    const s = swipe.current;
+    swipe.current = null;
+    if (!s) return;
+    s.row?.classList.remove('is-swiping');
+    s.row?.style.setProperty('--swipe', '0');
+    if (s.on && s.d >= SWIPE && m) startReply(m);
+  };
+
+  // tocar na citação: vai até a mensagem original (buscando as antigas se precisar)
+  const showMsg = (msgId) => {
+    const el = scroller.current?.querySelector(`[data-msg="${msgId}"]`);
+    if (!el) return false;
+    el.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    setFlashId(msgId);
+    setTimeout(() => setFlashId((f) => (f === msgId ? null : f)), 1600);
+    return true;
+  };
+  const jumpTo = async (r) => {
+    if (!r || r.deleted || showMsg(r.id)) return;
+    const first = msgsRef.current?.find((m) => !m.pending);
+    if (!first || !r.created_at) return;
+    try {
+      const data = await api.getMessages(id, {
+        before: first.created_at,
+        after: new Date(Date.parse(r.created_at) - 1).toISOString(),
+        limit: 200,
+      });
+      if (!data?.some((m) => m.id === r.id)) {
+        toast('Essa mensagem é antiga demais para mostrar aqui.');
+        return;
+      }
+      keepOffset.current = scroller.current.scrollHeight - scroller.current.scrollTop;
+      stick.current = false;
+      pendingJump.current = r.id;
+      setMsgs((xs) => {
+        const ids = new Set(xs.map((m) => m.id));
+        return [...data.filter((m) => !ids.has(m.id)), ...xs];
+      });
+    } catch (err) {
+      toast(api.errorMessage(err));
+    }
+  };
+  useEffect(() => {
+    if (!pendingJump.current) return;
+    const target = pendingJump.current;
+    pendingJump.current = null;
+    requestAnimationFrame(() => showMsg(target));
+  }, [msgs]);
+
   const onScroll = () => {
     const el = scroller.current;
     stick.current = el.scrollHeight - el.scrollTop - el.clientHeight < 120;
@@ -176,13 +294,15 @@ export default function Chat() {
     e?.preventDefault();
     const body = text.trim();
     if (!body) return;
+    const reply = replyTo;
     setText('');
-    const tmp = { id: 'tmp-' + Date.now(), pending: true, sender_id: active.id, kind: 'text', body, created_at: new Date().toISOString() };
+    setReplyTo(null);
+    const tmp = { id: 'tmp-' + Date.now(), pending: true, sender_id: active.id, kind: 'text', body, reply, created_at: new Date().toISOString() };
     stick.current = true;
     setMsgs((xs) => [...xs, tmp]);
     inputRef.current?.focus();
     try {
-      const saved = await api.sendMessage({ conversation: id, sender: active.id, body });
+      const saved = await api.sendMessage({ conversation: id, sender: active.id, body, replyTo: reply?.id });
       setMsgs((xs) => xs.map((m) => (m.id === tmp.id ? { ...tmp, ...saved, pending: false } : m)));
     } catch (err) {
       setMsgs((xs) => xs.map((m) => (m.id === tmp.id ? { ...m, failed: true } : m)));
@@ -195,12 +315,14 @@ export default function Chat() {
     e.target.value = '';
     if (!file) return;
     setUploading(true);
+    const reply = replyTo;
     try {
       const prepared = await prepareImage(file, 1600);
       const { blob, width, height } = await renderDmImage(prepared.img);
       URL.revokeObjectURL(prepared.url);
       const path = await api.uploadImage(uid, active.id, 'dm', blob);
-      await api.sendMessage({ conversation: id, sender: active.id, kind: 'media', media: { path, width, height } });
+      await api.sendMessage({ conversation: id, sender: active.id, kind: 'media', media: { path, width, height }, replyTo: reply?.id });
+      setReplyTo(null);
       stick.current = true;
       await fetchNew();
     } catch (err) {
@@ -268,11 +390,7 @@ export default function Chat() {
         <div className="topbar__left">
           <BackButton to="/direct" />
         </div>
-        <button
-          type="button"
-          className="chat__who"
-          onClick={() => (info?.is_group ? setGroupSheet(true) : other && navigate(`/u/${other.handle}`))}
-        >
+        <button type="button" className="chat__who" onClick={() => (info?.is_group ? setGroupSheet(true) : other && navigate(`/u/${other.handle}`))}>
           {info && <ConversationAvatar conv={info} size={32} />}
           <span className="chat__names">
             <strong>{info ? conversationTitle(info) : ''}</strong>
@@ -317,36 +435,78 @@ export default function Chat() {
           const lastOfRun = !next || next.sender_id !== m.sender_id || new Date(next.created_at) - new Date(m.created_at) > GAP;
           const firstOfRun = !prev || prev.sender_id !== m.sender_id || showStamp;
           const sender = byId[m.sender_id];
+          const lp = longPress(() => !m.pending && setMenuMsg(m));
           return (
             <div key={m.id}>
               {showStamp && <div className="chat__stamp">{chatStamp(m.created_at)}</div>}
-              <div className={`msg ${mine ? 'msg--mine' : 'msg--theirs'} ${lastOfRun ? 'msg--last' : ''} ${m.pending ? 'is-pending' : ''} ${m.failed ? 'is-failed' : ''}`}>
-                {!mine && <span className="msg__avatar">{lastOfRun && <Avatar character={sender} size={28} />}</span>}
-                <div className="msg__content" {...longPress(() => !m.pending && setMenuMsg(m))}>
-                  {info?.is_group && !mine && firstOfRun && sender && <span className="msg__sender">{sender.handle}</span>}
-                  {m.story_reply && (
-                    <div className="msg__story">
-                      <span className="muted">{mine ? 'Você respondeu ao story' : 'Respondeu ao seu story'}</span>
-                      {m.story && !m.story.expired && <img src={mediaUrl(m.story.path)} alt="" loading="lazy" />}
-                    </div>
-                  )}
-                  {m.kind === 'post' && <PostShare post={m.post} />}
-                  {m.kind === 'media' && m.media_path && (
-                    <button type="button" className="msg__image" onClick={() => setLightbox(m.media_path)}>
-                      <img
-                        src={mediaUrl(m.media_path)}
-                        alt=""
-                        loading="lazy"
-                        style={{ aspectRatio: m.media_width && m.media_height ? `${m.media_width} / ${m.media_height}` : undefined }}
-                      />
-                    </button>
-                  )}
-                  {m.body && m.kind !== 'post' && (
-                    <div className="msg__bubble">
-                      <RichText text={m.body} />
-                    </div>
-                  )}
-                  {m.failed && <span className="msg__failed">Não enviada</span>}
+              <div className="msg-row" data-msg={m.id}>
+                <span className="msg-row__reply" aria-hidden="true">
+                  <Reply size={18} />
+                </span>
+                <div
+                  className={`msg ${mine ? 'msg--mine' : 'msg--theirs'} ${lastOfRun ? 'msg--last' : ''} ${m.pending ? 'is-pending' : ''} ${m.failed ? 'is-failed' : ''} ${flashId === m.id ? 'is-flash' : ''}`}
+                >
+                  {!mine && <span className="msg__avatar">{lastOfRun && <Avatar character={sender} size={28} />}</span>}
+                  <div
+                    className="msg__content"
+                    {...lp}
+                    onPointerDown={(e) => {
+                      lp.onPointerDown(e);
+                      swipeStart(e, m);
+                    }}
+                    onPointerMove={(e) => {
+                      lp.onPointerMove(e);
+                      swipeMove(e);
+                    }}
+                    onPointerUp={(e) => {
+                      lp.onPointerUp(e);
+                      swipeEnd(m);
+                    }}
+                    onPointerCancel={(e) => {
+                      lp.onPointerCancel(e);
+                      swipeEnd(null);
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
+                      if (!m.pending && !('ontouchstart' in window)) setMenuMsg(m);
+                    }}
+                  >
+                    {info?.is_group && !mine && firstOfRun && sender && !m.reply && <span className="msg__sender">{sender.handle}</span>}
+                    {m.reply && (
+                      <div className="msg__reply">
+                        <span className="msg__reply-who">
+                          <Reply size={12} /> {replyCaption(m, m.reply, active.id, sender?.handle)}
+                        </span>
+                        <button type="button" className="msg__quote" onClick={() => jumpTo(m.reply)} disabled={!!m.reply.deleted || m.pending}>
+                          {m.reply.kind === 'media' && m.reply.media_path && <img src={mediaUrl(m.reply.media_path)} alt="" loading="lazy" />}
+                          <span>{quoteText(m.reply)}</span>
+                        </button>
+                      </div>
+                    )}
+                    {m.story_reply && (
+                      <div className="msg__story">
+                        <span className="muted">{mine ? 'Você respondeu ao story' : 'Respondeu ao seu story'}</span>
+                        {m.story && !m.story.expired && <img src={mediaUrl(m.story.path)} alt="" loading="lazy" />}
+                      </div>
+                    )}
+                    {m.kind === 'post' && <PostShare post={m.post} />}
+                    {m.kind === 'media' && m.media_path && (
+                      <button type="button" className="msg__image" onClick={() => setLightbox(m.media_path)}>
+                        <img
+                          src={mediaUrl(m.media_path)}
+                          alt=""
+                          loading="lazy"
+                          style={{ aspectRatio: m.media_width && m.media_height ? `${m.media_width} / ${m.media_height}` : undefined }}
+                        />
+                      </button>
+                    )}
+                    {m.body && m.kind !== 'post' && (
+                      <div className="msg__bubble">
+                        <RichText text={m.body} />
+                      </div>
+                    )}
+                    {m.failed && <span className="msg__failed">Não enviada</span>}
+                  </div>
                 </div>
               </div>
             </div>
@@ -356,6 +516,20 @@ export default function Chat() {
       </div>
 
       <form className="chat__composer" onSubmit={send}>
+        {replyTo && (
+          <div className="chat__replying">
+            <Reply size={18} className="muted" />
+            <div className="chat__replying-text">
+              <span>
+                Respondendo a <strong>{replyTo.sender_id === active.id ? 'você mesmo' : replyTo.handle || 'mensagem'}</strong>
+              </span>
+              <span className="muted">{quoteText(replyTo)}</span>
+            </div>
+            <IconButton label="Cancelar resposta" onClick={() => setReplyTo(null)}>
+              <X size={18} />
+            </IconButton>
+          </div>
+        )}
         <div className="chat__input-wrap">
           <textarea
             ref={inputRef}
@@ -386,6 +560,11 @@ export default function Chat() {
       </form>
 
       <Sheet open={!!menuMsg} onClose={() => setMenuMsg(null)}>
+        {menuMsg && !menuMsg.failed && (
+          <SheetItem icon={<Reply size={22} />} onClick={() => startReply(menuMsg)}>
+            Responder
+          </SheetItem>
+        )}
         {menuMsg?.body && (
           <SheetItem
             icon={<Copy size={22} />}
@@ -437,7 +616,7 @@ export default function Chat() {
           <div className="lightbox" onClick={() => setLightbox(null)} role="dialog" aria-label="Foto">
             <img src={mediaUrl(lightbox)} alt="" />
           </div>,
-          document.body
+          document.body,
         )}
     </div>
   );

@@ -192,6 +192,27 @@ export function useOnVisible(fn, enabled = true) {
 // Segurar o dedo (toque longo) — funciona no iPhone, onde não existe "clique direito"
 let lpTimer = null;
 let lpStart = null;
+
+// Ao soltar o dedo depois de um toque longo, alguns celulares ainda mandam um
+// "clique" no mesmo lugar. Como o menu acabou de abrir embaixo do dedo, esse
+// clique escolheria a primeira opção sozinho. Então ignoramos esse clique.
+function swallowReleaseClick() {
+  const done = () => {
+    document.removeEventListener('click', swallow, true);
+    document.removeEventListener('pointerup', onUp, true);
+    clearTimeout(safety);
+  };
+  const swallow = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    done();
+  };
+  const onUp = () => setTimeout(done, 500);
+  const safety = setTimeout(done, 15000);
+  document.addEventListener('click', swallow, true);
+  document.addEventListener('pointerup', onUp, true);
+}
+
 export function longPress(fn, ms = 450) {
   const cancel = () => {
     clearTimeout(lpTimer);
@@ -204,6 +225,7 @@ export function longPress(fn, ms = 450) {
       lpTimer = setTimeout(() => {
         lpTimer = null;
         if (navigator.vibrate) navigator.vibrate(10);
+        swallowReleaseClick();
         fn();
       }, ms);
     },

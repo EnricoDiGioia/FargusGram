@@ -14,7 +14,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Explorar, com busca de personagens e hashtags
 - Notificações de curtidas, comentários, respostas, menções, marcações e seguidores
 - Notificações no celular (mesmo com o app fechado), com número no ícone do app e escolha do que receber
-- Direct com conversas individuais e grupos, inclusive com fotos
+- Direct com conversas individuais e grupos, inclusive com fotos, e respostas a uma mensagem específica
 - Cada jogador pode ter vários personagens e alternar entre eles. O mestre usa isso para os NPCs.
 - Selo de verificado, dado pelo admin
 - Modo escuro
@@ -118,6 +118,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | --- | --- |
 | `2026-09-musica.sql` | Música nos posts e nos stories |
 | `2026-09-notificacoes.sql` | Notificações no celular (depois, crie a função `push`, veja abaixo) |
+| `2026-09-respostas.sql` | Responder uma mensagem específica no Direct (rode depois da de notificações) |
 
 ## Notificações no celular
 
@@ -162,6 +163,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
 - **Criar NPC:** na troca de personagem, toque em **Criar novo personagem**.
+- **Responder uma mensagem no Direct:** arraste a mensagem para a direita, ou segure o dedo nela e toque em **Responder**. A resposta mostra a mensagem citada, e tocar na citação leva até a original, mesmo que seja antiga. Quem foi respondido recebe a notificação "respondeu você".
 - **Esqueceu a senha:** o admin redefine em **Painel do admin** → **Redefinir senha** e passa a senha nova para a pessoa, que pode trocá-la depois em Configurações.
 - **Selo de verificado:** no Painel do admin, toque no selo ao lado do personagem.
 - **Tirar alguém do grupo:** no Supabase, abra **Authentication** → **Users** e apague o usuário. Tudo o que ele publicou some junto. Depois troque o código de convite.

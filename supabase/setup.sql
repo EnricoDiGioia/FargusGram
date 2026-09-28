@@ -178,6 +178,7 @@ create table if not exists public.messages (
   media_height    int,
   post_id         uuid references public.posts (id) on delete set null,
   story_id        uuid references public.stories (id) on delete set null,
+  reply_to        uuid, -- mensagem respondida (sem chave estrangeira: se sumir, mostra "apagada")
   created_at      timestamptz not null default now(),
   check (kind not in ('text', 'story_reply') or coalesce(char_length(body), 0) > 0),
   check (kind <> 'media' or media_path is not null)
@@ -195,6 +196,10 @@ alter table public.posts   add  constraint posts_music_is_object
 alter table public.stories drop constraint if exists stories_music_is_object;
 alter table public.stories add  constraint stories_music_is_object
   check (music is null or (jsonb_typeof(music) = 'object' and pg_column_size(music) <= 4096));
+
+-- Responder uma mensagem específica no Direct
+alter table public.messages add column if not exists reply_to uuid;
+create index if not exists messages_reply_idx on public.messages (reply_to) where reply_to is not null;
 
 -- Notificações no celular (push)
 -- (para quem instalou antes de setembro/2026, esta linha adiciona a coluna)
@@ -498,6 +503,10 @@ create policy messages_insert on public.messages for insert to authenticated
     and exists (
       select 1 from public.conversation_members m
       where m.conversation_id = messages.conversation_id and m.character_id = messages.sender_id
+    )
+    and (
+      reply_to is null
+      or exists (select 1 from public.messages r where r.id = messages.reply_to and r.conversation_id = messages.conversation_id)
     )
   );
 drop policy if exists messages_delete on public.messages;
@@ -831,26 +840,34 @@ create trigger notifications_push after insert on public.notifications
 create or replace function public.tg_message_push()
 returns trigger language plpgsql security definer set search_path = '' as $$
 declare
-  v_from public.characters;
-  v_conv public.conversations;
-  v_text text;
-  r      record;
+  v_from        public.characters;
+  v_conv        public.conversations;
+  v_where       text;
+  v_text        text;
+  v_reply_text  text;
+  v_reply_owner uuid;
+  r             record;
 begin
   select * into v_from from public.characters c where c.id = new.sender_id;
   select * into v_conv from public.conversations cv where cv.id = new.conversation_id;
   if v_from.id is null or v_conv.id is null then
     return new;
   end if;
+  v_where := case when v_conv.is_group then ' em ' || coalesce(nullif(trim(v_conv.title), ''), 'grupo') else '' end;
   v_text := case new.kind
     when 'media' then 'enviou uma foto.'
     when 'post' then 'compartilhou uma publicação.'
     when 'story_reply' then 'respondeu ao seu story: ' || public._push_snippet(new.body, 120)
     else public._push_snippet(new.body, 160)
   end;
-  v_text := v_from.handle
-    || case when v_conv.is_group then ' em ' || coalesce(nullif(trim(v_conv.title), ''), 'grupo') else '' end
-    || case when new.kind = 'text' then ': ' else ' ' end
-    || v_text;
+  v_text := v_from.handle || v_where || case when new.kind = 'text' then ': ' else ' ' end || v_text;
+  if new.reply_to is not null then
+    select c.owner_id into v_reply_owner
+    from public.messages rm join public.characters c on c.id = rm.sender_id
+    where rm.id = new.reply_to;
+    v_reply_text := v_from.handle || ' respondeu você' || v_where
+      || case when new.kind = 'media' then ' com uma foto.' else ': ' || public._push_snippet(new.body, 160) end;
+  end if;
   for r in
     select distinct on (c.owner_id) c.owner_id, c.id, c.handle
     from public.conversation_members m
@@ -858,7 +875,8 @@ begin
     where m.conversation_id = new.conversation_id and c.owner_id <> v_from.owner_id
     order by c.owner_id, m.joined_at
   loop
-    perform public._push_enqueue(r.owner_id, r.id, 'message', r.handle, v_text,
+    perform public._push_enqueue(r.owner_id, r.id, 'message', r.handle,
+      case when v_reply_owner is not null and v_reply_owner = r.owner_id then v_reply_text else v_text end,
       '#/direct/' || new.conversation_id, 'dm:' || new.conversation_id);
   end loop;
   return new;
@@ -1539,7 +1557,21 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
         select jsonb_build_object('id', s.id, 'path', s.path, 'character_id', s.character_id, 'expired', s.expires_at <= now())
         from public.stories s where s.id = msg.story_id
       ) end,
-      'story_reply', msg.kind = 'story_reply'
+      'story_reply', msg.kind = 'story_reply',
+      'reply', case when msg.reply_to is null then null else coalesce((
+        select jsonb_build_object(
+          'id', r.id,
+          'sender_id', r.sender_id,
+          'handle', rc.handle,
+          'kind', r.kind,
+          'body', left(r.body, 160),
+          'media_path', r.media_path,
+          'created_at', r.created_at
+        )
+        from public.messages r
+        left join public.characters rc on rc.id = r.sender_id
+        where r.id = msg.reply_to and r.conversation_id = msg.conversation_id
+      ), jsonb_build_object('id', msg.reply_to, 'deleted', true)) end
     ) as x, msg.created_at
     from public.messages msg
     where msg.conversation_id = p_conversation

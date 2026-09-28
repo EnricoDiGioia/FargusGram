@@ -25,6 +25,8 @@ export function errorMessage(err) {
   if (/Payload too large|exceeded the maximum allowed size/i.test(msg)) return 'Arquivo grande demais.';
   if (/mime type|invalid_mime_type/i.test(msg)) return 'Tipo de arquivo não suportado. Use uma foto JPG ou PNG.';
   if (/JWT|token is expired|invalid claim/i.test(msg)) return 'Sua sessão expirou. Entre de novo.';
+  if ((code === 'PGRST204' || code === '42703') && /reply_to/.test(msg))
+    return 'O banco ainda não tem a atualização de respostas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-respostas.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /create_post/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /music/.test(msg)))
     return 'O banco ainda não tem a atualização de música. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-musica.sql no SQL Editor do Supabase (veja o README).';
   return msg || 'Algo deu errado.';
@@ -270,13 +272,14 @@ export async function markNotificationsRead(viewer) {
 // ---------------------------------------------------------------------
 export const inbox = (viewer) => rpc('inbox', { p_viewer: viewer });
 export const conversationInfo = (conv, viewer) => rpc('conversation_info', { p_conversation: conv, p_viewer: viewer });
-export const getMessages = (conv, { before, after } = {}) =>
-  rpc('get_messages', { p_conversation: conv, p_before: before ?? null, p_after: after ?? null, p_limit: 40 });
+export const getMessages = (conv, { before, after, limit = 40 } = {}) =>
+  rpc('get_messages', { p_conversation: conv, p_before: before ?? null, p_after: after ?? null, p_limit: limit });
 export const startConversation = (from, to, title) =>
   rpc('start_conversation', { p_from: from, p_to: to, p_title: title ?? null });
 
-export async function sendMessage({ conversation, sender, kind = 'text', body, media, post, story }) {
+export async function sendMessage({ conversation, sender, kind = 'text', body, media, post, story, replyTo }) {
   const row = { conversation_id: conversation, sender_id: sender, kind, body: body?.trim() || null };
+  if (replyTo) row.reply_to = replyTo; // só manda quando é resposta (funciona antes da atualização do banco)
   if (media) Object.assign(row, { media_path: media.path, media_width: media.width, media_height: media.height });
   if (post) row.post_id = post;
   if (story) row.story_id = story;
