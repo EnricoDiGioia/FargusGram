@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { Trash2, X } from 'lucide-react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { MoveDiagonal2, RotateCw, Trash2, X } from 'lucide-react';
 import '@fontsource/special-elite/latin-400.css';
 import '@fontsource/pacifico/latin-400.css';
 import '@fontsource/bebas-neue/latin-400.css';
@@ -9,8 +9,9 @@ import { LAYER_REF_W, TEXT_WRAP, photoRadius, prepareImage } from '../lib/media'
 
 // ---------------------------------------------------------------------
 // Camadas por cima da foto (story e publicação): textos e fotos.
-//   um dedo arrasta · dois dedos aumentam e giram · no computador, a
-//   bolinha do canto gira e muda o tamanho · ✕ tira a camada
+//   arrastar move · alça ↻ gira · alça ⤡ muda o tamanho · ✕ tira
+//   dois dedos também giram e mudam o tamanho; no computador, a rodinha
+//   do mouse muda o tamanho (com Shift, gira)
 // O desenho final (lib/media.js → drawLayers) usa as mesmas medidas.
 // ---------------------------------------------------------------------
 
@@ -28,36 +29,67 @@ export function newTextLayer(layers, fields) {
   return { id: newId(), kind: 'text', x: 0.5, y: 0.34 + (n % 5) * 0.1, rot: 0, scale: 1, z: topZ(layers) + 1, font: 'classica', size: 76, color: '#ffffff', boxed: false, ...fields };
 }
 
-// fotos novas entram em cascata, levemente giradas, para não ficarem uma em cima da outra
-export function newPhotoLayer(layers, image, i = 0) {
-  const n = layers.filter((l) => l.kind === 'photo').length + i;
-  return {
-    id: newId(),
-    kind: 'photo',
-    image,
-    x: 0.5 + ((n % 3) - 1) * 0.08,
-    y: 0.44 + (n % 3) * 0.06,
-    rot: n ? (n % 2 ? 0.07 : -0.06) : 0,
-    scale: 1,
-    z: topZ(layers) + 1 + i,
-    w: 0.56,
-  };
+// área ocupada por uma foto, em larguras do quadro (ratio = altura / largura do quadro)
+function photoBox(l, ratio) {
+  const w = l.w * (l.scale || 1);
+  const h = w * (l.image.height / l.image.width);
+  return { x: l.x - w / 2, y: l.y * ratio - h / 2, w, h };
+}
+const overlap = (a, b) =>
+  Math.max(0, Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x)) * Math.max(0, Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y));
+
+// Onde as fotos novas entram: a primeira, sozinha, no meio; as outras numa
+// grade (2 colunas; 3 linhas no story, começando pela do meio), nos lugares
+// que menos cobrem as fotos que já estão lá. ratio = altura / largura do quadro.
+export function placePhotos(layers, images, ratio = 16 / 9) {
+  const existing = layers.filter((l) => l.kind === 'photo');
+  let z = topZ(layers);
+  if (!existing.length && images.length === 1) {
+    const image = images[0];
+    const w = Math.min(0.62, (0.62 * ratio) / (image.height / image.width));
+    return [{ id: newId(), kind: 'photo', image, x: 0.5, y: 0.5, rot: 0, scale: 1, z: z + 1, w }];
+  }
+  const cols = ratio < 0.75 ? 3 : 2;
+  const rows = ratio >= 1.4 ? 3 : 2;
+  const MX = 0.04; // margens (em fração da largura / altura)
+  const MY = 0.06;
+  const slots = [];
+  for (const r of rows === 3 ? [1, 2, 0] : [0, 1])
+    for (let c = 0; c < cols; c++) slots.push({ x: MX + ((c + 0.5) * (1 - 2 * MX)) / cols, y: MY + ((r + 0.5) * (1 - 2 * MY)) / rows });
+  const taken = existing.map((l) => photoBox(l, ratio));
+  return images.map((image, i) => {
+    const ir = image.height / image.width;
+    const w = Math.min((0.9 * (1 - 2 * MX)) / cols, (0.9 * (1 - 2 * MY) * ratio) / rows / ir);
+    const h = w * ir;
+    let best = null;
+    for (const s of slots) {
+      const b = { x: s.x - w / 2, y: s.y * ratio - h / 2, w, h };
+      const cost = taken.reduce((sum, o) => sum + overlap(b, o), 0);
+      if (!best || cost < best.cost - 1e-6) best = { s, b, cost };
+    }
+    // grade cheia: desloca um pouco para não ficar exatamente em cima de outra
+    const nudge = best.cost > 0 ? 0.05 * ((i % 3) + 1) : 0;
+    const x = Math.min(0.95, best.s.x + nudge);
+    const y = Math.min(0.95, best.s.y + nudge / ratio);
+    taken.push({ ...best.b, x: x - w / 2, y: y * ratio - h / 2 });
+    z += 1;
+    return { id: newId(), kind: 'photo', image, x, y, rot: 0, scale: 1, z, w };
+  });
 }
 
 // abre as fotos escolhidas (menores que a principal: poupa memória)
-export async function photoLayersFrom(files, layers, onError) {
+export async function photoLayersFrom(files, layers, onError, ratio) {
   const room = MAX_PHOTO_LAYERS - layers.filter((l) => l.kind === 'photo').length;
-  const out = [];
+  const images = [];
   for (const file of [...files].slice(0, Math.max(0, room))) {
     try {
-      const image = await prepareImage(file, 1400);
-      out.push(newPhotoLayer(layers, image, out.length));
+      images.push(await prepareImage(file, 1400));
     } catch (err) {
       onError?.(err.message);
     }
   }
   if (files.length > room) onError?.(`Dá para colocar até ${MAX_PHOTO_LAYERS} fotos por cima.`);
-  return out;
+  return images.length ? placePhotos(layers, images, ratio) : [];
 }
 
 export function revokeLayers(layers) {
@@ -68,13 +100,27 @@ const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 const dist = (a, b) => Math.hypot(a.x - b.x, a.y - b.y);
 const angle = (a, b) => Math.atan2(b.y - a.y, b.x - a.x);
 const mid = (a, b) => ({ x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 });
+const pt = (e) => ({ x: e.clientX, y: e.clientY });
 // gruda no reto (0°, 90°, 180°) quando passa perto
 function snap(a) {
   let r = Math.atan2(Math.sin(a), Math.cos(a));
   for (const t of [-Math.PI, -Math.PI / 2, 0, Math.PI / 2, Math.PI]) if (Math.abs(r - t) < 0.05) r = t;
   return r;
 }
-const scaleLimits = (l) => (l.kind === 'photo' ? [0.2, 3] : [0.3, 5]);
+const scaleLimits = (l) => (l.kind === 'photo' ? [0.15, 4] : [0.3, 5]);
+const isHandle = (mode) => mode === 'rotate' || mode === 'resize';
+// sem try, um navegador que recusa a captura interromperia o gesto
+const capture = (e) => {
+  try {
+    e.currentTarget.setPointerCapture(e.pointerId);
+  } catch {
+    /* segue sem captura */
+  }
+};
+
+const PAD = 10; // folga da moldura em volta da camada
+const EDGE = 24; // as alças (e a área de toque delas) nunca saem do quadro
+const TIP_KEY = 'fg-layer-tip';
 
 function TextLines({ l }) {
   if (!l.boxed) return l.text;
@@ -85,15 +131,44 @@ function TextLines({ l }) {
   ));
 }
 
+// cantos preferidos de cada alça (cantos da camada, girando junto com ela)
+const CORNER_PREFS = [
+  ['resize', ['br', 'bl', 'tr', 'tl']],
+  ['rotate', ['tr', 'tl', 'br', 'bl']],
+  ['remove', ['tl', 'bl', 'tr', 'br']],
+];
+const HIT = 23; // raio da área de toque das alças
+
 // readOnly: só mostra (prévia), sem gestos
-export function LayerStage({ layers, onChange, onEditText, className = '', readOnly = false }) {
+// avoid: seletor dos botões que ficam por cima do quadro (as alças fogem deles)
+export function LayerStage({ layers, onChange, onEditText, className = '', readOnly = false, avoid = '' }) {
   const box = useRef(null);
+  const uiBox = useRef(null);
+  const els = useRef(new Map());
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [sel, setSel] = useState(null);
   const [gesturing, setGesturing] = useState(false);
-  const g = useRef(null);
+  const [dims, setDims] = useState(null);
+  const [tip, setTip] = useState(false);
+  const [prevLayers, setPrevLayers] = useState(layers);
+  const [obstacles, setObstacles] = useState([]);
+  const corners = useRef(null); // cantos das alças, fixos durante um gesto
+  const g = useRef(null); // gesto com os dedos / mouse
+  const gs = useRef(null); // gesto do Safari (pinça do iPhone / trackpad)
+  const tipShown = useRef(false);
   const layersRef = useRef(layers);
   layersRef.current = layers;
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+
+  // camada nova (foto ou texto) já vem escolhida, com as alças à mostra;
+  // camada apagada por fora (ex.: no editor de texto) sai da seleção
+  if (layers !== prevLayers) {
+    setPrevLayers(layers);
+    const fresh = readOnly ? [] : layers.filter((l) => !prevLayers.some((p) => p.id === l.id));
+    if (fresh.length) setSel(fresh[fresh.length - 1].id);
+    else if (sel && !layers.some((l) => l.id === sel)) setSel(null);
+  }
 
   useEffect(() => {
     const el = box.current;
@@ -105,28 +180,145 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
     return () => ro.disconnect();
   }, []);
 
+  // tamanho da camada escolhida (sem giro nem escala), para a moldura e as
+  // alças; acompanha o texto mudando, a fonte carregando e a tela girando
+  const ready = size.w > 0;
+  useLayoutEffect(() => {
+    const el = sel && els.current.get(sel);
+    if (!el) return undefined;
+    const measure = () => {
+      const w = el.offsetWidth;
+      const h = el.offsetHeight;
+      setDims((p) => (p && p.id === sel && p.w === w && p.h === h ? p : { id: sel, w, h }));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [sel, ready]);
+
+  // onde estão os botões por cima do quadro (em relação a ele)
+  useLayoutEffect(() => {
+    if (!avoid || !sel || !box.current) return;
+    const b = box.current.getBoundingClientRect();
+    const list = [...document.querySelectorAll(avoid)]
+      .map((el) => el.getBoundingClientRect())
+      .filter((r) => r.width && r.height)
+      .map((r) => ({ x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }));
+    setObstacles((p) => (JSON.stringify(p) === JSON.stringify(list) ? p : list));
+  }, [avoid, sel, size.w, size.h]);
+
   // tocar fora das camadas tira a seleção
   useEffect(() => {
     if (!sel) return undefined;
     const onDown = (e) => {
-      if (!e.target.closest?.('.layer')) setSel(null);
+      if (!e.target.closest?.('.layer, .layer-ctl')) setSel(null);
     };
     document.addEventListener('pointerdown', onDown, true);
     return () => document.removeEventListener('pointerdown', onDown, true);
   }, [sel]);
 
-  // camada apagada por fora (ex.: no editor de texto)
+  // dica rápida nas primeiras vezes
   useEffect(() => {
-    if (sel && !layers.some((l) => l.id === sel)) setSel(null);
-  }, [layers, sel]);
+    if (!sel || readOnly || tipShown.current) return;
+    tipShown.current = true;
+    let n = 3;
+    try {
+      n = Number(localStorage.getItem(TIP_KEY)) || 0;
+      if (n < 3) localStorage.setItem(TIP_KEY, String(n + 1));
+    } catch {
+      /* sem armazenamento: mostra mesmo assim */
+      n = 0;
+    }
+    if (n < 3) setTip(true);
+  }, [sel, readOnly]);
+  useEffect(() => {
+    if (!tip) return undefined;
+    const t = setTimeout(() => setTip(false), 5000);
+    return () => clearTimeout(t);
+  }, [tip]);
 
-  const update = (id, patch) => onChange(layersRef.current.map((l) => (l.id === id ? { ...l, ...patch } : l)));
+  // só lê refs: pode ser chamada de dentro dos ouvintes nativos
+  const update = (id, patch) => {
+    const next = layersRef.current.map((l) => (l.id === id ? { ...l, ...patch } : l));
+    layersRef.current = next;
+    onChangeRef.current(next);
+  };
   const remove = (id) => {
     const l = layersRef.current.find((x) => x.id === id);
     if (l?.kind === 'photo') URL.revokeObjectURL(l.image.url);
-    onChange(layersRef.current.filter((x) => x.id !== id));
+    const next = layersRef.current.filter((x) => x.id !== id);
+    layersRef.current = next;
+    onChangeRef.current(next);
     setSel(null);
   };
+
+  // Ouvintes nativos (precisam poder cancelar o padrão do navegador):
+  // - arrastar com o dedo não rola nem dá zoom na página
+  // - Safari (iPhone e trackpad do Mac): a pinça vira giro/tamanho da camada
+  //   em vez de zoom na página
+  // - computador: rodinha do mouse muda o tamanho; com Shift ou Alt, gira
+  useEffect(() => {
+    if (readOnly) return undefined;
+    const targets = [box.current, uiBox.current].filter(Boolean);
+    const layerAt = (e) => {
+      const id = g.current?.id || e.target.closest?.('[data-layer]')?.dataset.layer;
+      return id ? layersRef.current.find((x) => x.id === id) : null;
+    };
+    const onTouchMove = (e) => {
+      if (g.current) e.preventDefault();
+    };
+    const onGestureStart = (e) => {
+      e.preventDefault();
+      const l = layerAt(e);
+      gs.current = l ? { id: l.id, start: l } : null;
+      if (l) setSel(l.id);
+    };
+    const onGestureChange = (e) => {
+      e.preventDefault();
+      const S = gs.current;
+      const G = g.current;
+      // com dois dedos registrados, o gesto normal já está cuidando disso
+      if (!S || (G && (G.mode === 'pinch' || isHandle(G.mode)))) return;
+      const [lo, hi] = scaleLimits(S.start);
+      update(S.id, { scale: clamp((S.start.scale || 1) * e.scale, lo, hi), rot: snap((S.start.rot || 0) + (e.rotation * Math.PI) / 180) });
+    };
+    const onGestureEnd = (e) => {
+      e.preventDefault();
+      gs.current = null;
+    };
+    const onWheel = (e) => {
+      const l = layerAt(e);
+      if (!l) return;
+      e.preventDefault();
+      const d = (e.deltaY || e.deltaX) * (e.deltaMode === 1 ? 33 : 1); // Shift+rodinha vira deltaX em alguns sistemas
+      if (e.shiftKey || e.altKey) update(l.id, { rot: snap((l.rot || 0) + d * 0.004) });
+      else {
+        const [lo, hi] = scaleLimits(l);
+        // ctrl + rodinha é a pinça do trackpad
+        update(l.id, { scale: clamp((l.scale || 1) * Math.exp(-d * (e.ctrlKey ? 0.01 : 0.0015)), lo, hi) });
+      }
+      setSel(l.id);
+    };
+    const opts = { passive: false };
+    for (const t of targets) {
+      t.addEventListener('touchmove', onTouchMove, opts);
+      t.addEventListener('gesturestart', onGestureStart, opts);
+      t.addEventListener('gesturechange', onGestureChange, opts);
+      t.addEventListener('gestureend', onGestureEnd, opts);
+      t.addEventListener('wheel', onWheel, opts);
+    }
+    return () => {
+      for (const t of targets) {
+        t.removeEventListener('touchmove', onTouchMove, opts);
+        t.removeEventListener('gesturestart', onGestureStart, opts);
+        t.removeEventListener('gesturechange', onGestureChange, opts);
+        t.removeEventListener('gestureend', onGestureEnd, opts);
+        t.removeEventListener('wheel', onWheel, opts);
+      }
+    };
+    // (update só lê refs, por isso não entra na lista)
+  }, [readOnly]);
 
   // (re)começa o gesto a partir dos dedos que estão na tela agora
   const begin = () => {
@@ -134,7 +326,7 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
     const pts = [...G.pointers.values()];
     G.start = layersRef.current.find((l) => l.id === G.id);
     G.p0 = pts.map((p) => ({ ...p }));
-    if (G.mode === 'handle') return;
+    if (isHandle(G.mode)) return;
     if (pts.length >= 2) {
       G.mode = 'pinch';
       G.moved = true;
@@ -146,20 +338,21 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
 
   const onLayerDown = (e, l) => {
     e.stopPropagation();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    if (g.current && g.current.mode !== 'handle' && g.current.pointers.size > 0 && g.current.id !== l.id) {
-      // dedo extra em outra camada: continua o gesto da que já está sendo mexida
-      g.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    capture(e);
+    const G = g.current;
+    // primeiro dedo (ou clique): sempre um gesto novo, mesmo que um anterior
+    // tenha ficado sem o "soltar"
+    if (G && !e.isPrimary && G.pointers.size > 0) {
+      if (isHandle(G.mode)) return;
+      // segundo dedo, nesta ou em outra camada: aumenta/gira a que já está sendo mexida
+      G.pointers.set(e.pointerId, pt(e));
       begin();
       return;
     }
-    if (!g.current || g.current.id !== l.id) {
-      g.current = { id: l.id, pointers: new Map(), moved: false, t0: Date.now(), mode: 'move' };
-      // a camada tocada vem para a frente
-      const z = topZ(layersRef.current);
-      if ((l.z || 0) < z) update(l.id, { z: z + 1 });
-    }
-    g.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    g.current = { id: l.id, pointers: new Map([[e.pointerId, pt(e)]]), moved: false, t0: Date.now(), mode: 'move' };
+    // a camada tocada vem para a frente
+    const z = topZ(layersRef.current);
+    if ((l.z || 0) < z) update(l.id, { z: z + 1 });
     setSel(l.id);
     setGesturing(true);
     begin();
@@ -167,40 +360,51 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
 
   // segundo dedo em qualquer lugar da foto, durante um gesto
   const onStageDown = (e) => {
-    if (!g.current || g.current.mode === 'handle') return;
+    const G = g.current;
+    if (!G || !G.pointers.size || isHandle(G.mode)) return;
     e.stopPropagation();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
-    g.current.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    capture(e);
+    G.pointers.set(e.pointerId, pt(e));
     begin();
   };
 
-  // bolinha do canto: gira e muda o tamanho com um dedo (ou o mouse)
-  const onHandleDown = (e, l) => {
+  // alças: ↻ gira em volta do centro · ⤡ muda o tamanho (um dedo ou o mouse)
+  const onHandleDown = (e, l, mode) => {
     e.stopPropagation();
-    e.currentTarget.setPointerCapture?.(e.pointerId);
+    capture(e);
+    const G = g.current;
+    if (G && !e.isPrimary && G.pointers.size > 0) {
+      if (isHandle(G.mode)) return;
+      G.pointers.set(e.pointerId, pt(e));
+      begin();
+      return;
+    }
     const r = box.current.getBoundingClientRect();
     const center = { x: r.left + l.x * r.width, y: r.top + l.y * r.height };
-    const p = { x: e.clientX, y: e.clientY };
-    g.current = { id: l.id, pointers: new Map([[e.pointerId, p]]), mode: 'handle', moved: true, t0: Date.now(), center, start: l, a0: angle(center, p), d0: dist(center, p) || 1 };
+    const p = pt(e);
+    g.current = { id: l.id, pointers: new Map([[e.pointerId, p]]), mode, moved: true, t0: Date.now(), center, start: l, a0: angle(center, p), d0: Math.max(8, dist(center, p)) };
+    setSel(l.id);
     setGesturing(true);
+    setTip(false);
   };
 
   const onMove = (e) => {
     const G = g.current;
     if (!G || !G.pointers.has(e.pointerId)) return;
-    G.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    G.pointers.set(e.pointerId, pt(e));
     const pts = [...G.pointers.values()];
     const s = G.start;
     if (!s) return;
     const [lo, hi] = scaleLimits(s);
-    if (G.mode === 'handle') {
-      const p = pts[0];
-      update(G.id, { rot: snap(s.rot + angle(G.center, p) - G.a0), scale: clamp((s.scale * dist(G.center, p)) / G.d0, lo, hi) });
+    if (G.mode === 'rotate') {
+      update(G.id, { rot: snap((s.rot || 0) + angle(G.center, pts[0]) - G.a0) });
+    } else if (G.mode === 'resize') {
+      update(G.id, { scale: clamp(((s.scale || 1) * dist(G.center, pts[0])) / G.d0, lo, hi) });
     } else if (G.mode === 'pinch' && pts.length >= 2) {
       const m = mid(pts[0], pts[1]);
       update(G.id, {
-        scale: clamp((s.scale * dist(pts[0], pts[1])) / G.d0, lo, hi),
-        rot: snap(s.rot + angle(pts[0], pts[1]) - G.a0),
+        scale: clamp(((s.scale || 1) * dist(pts[0], pts[1])) / G.d0, lo, hi),
+        rot: snap((s.rot || 0) + angle(pts[0], pts[1]) - G.a0),
         x: clamp(s.x + (m.x - G.m0.x) / size.w, 0.02, 0.98),
         y: clamp(s.y + (m.y - G.m0.y) / size.h, 0.02, 0.98),
       });
@@ -225,93 +429,172 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
     // toque rápido no texto: abre para editar
     if (!G.moved && G.mode === 'move' && Date.now() - G.t0 < 450) {
       const l = layersRef.current.find((x) => x.id === G.id);
-      if (l?.kind === 'text') onEditText?.(l);
+      if (l?.kind === 'text' && onEditText) {
+        setSel(null);
+        onEditText(l);
+      }
     }
   };
 
   const k = size.w / LAYER_REF_W;
+  // os eventos das camadas e das alças sobem até aqui (inclusive com captura)
   const handlers = readOnly ? {} : { onPointerMove: onMove, onPointerUp: onUp, onPointerCancel: onUp };
 
+  // moldura e alças da camada escolhida: ficam numa folha própria, acima das
+  // ferramentas, e nunca saem do quadro (senão não daria para pegá-las)
+  let controls = null;
+  const cur = !readOnly && sel && size.w > 0 ? layers.find((l) => l.id === sel) : null;
+  if (cur) {
+    const d =
+      cur.kind === 'photo'
+        ? { w: cur.w * size.w, h: cur.w * size.w * (cur.image.height / cur.image.width) }
+        : dims && dims.id === cur.id
+          ? dims
+          : null;
+    if (d) {
+      const s = cur.scale || 1;
+      const rot = cur.rot || 0;
+      const hw = (d.w * s) / 2 + PAD;
+      const hh = (d.h * s) / 2 + PAD;
+      const cx = cur.x * size.w;
+      const cy = cur.y * size.h;
+      const cos = Math.cos(rot);
+      const sin = Math.sin(rot);
+      const turn = `translate(-50%, -50%) rotate(${rot}rad)`;
+      // camada pequena: as alças não ficam uma em cima da outra
+      const ex = Math.max(hw, 30);
+      const ey = Math.max(hh, 30);
+      const at = (dx, dy) => ({
+        left: clamp(cx + dx * cos - dy * sin, EDGE, size.w - EDGE),
+        top: clamp(cy + dx * sin + dy * cos, EDGE, size.h - EDGE),
+        transform: turn,
+      });
+      const spots = { tl: at(-ex, -ey), tr: at(ex, -ey), br: at(ex, ey), bl: at(-ex, ey) };
+      // cada alça vai para o primeiro canto livre (que não caia em cima de um
+      // botão); durante um gesto ficam onde estavam, para não pular do dedo
+      if (!gesturing || corners.current?.id !== cur.id) {
+        const blocked = (p) => obstacles.some((o) => p.left + HIT > o.x - 4 && p.left - HIT < o.x + o.w + 4 && p.top + HIT > o.y - 4 && p.top - HIT < o.y + o.h + 4);
+        const taken = new Set();
+        const pick = {};
+        for (const [name, prefs] of CORNER_PREFS) {
+          const c = prefs.find((k) => !taken.has(k) && !blocked(spots[k])) || prefs.find((k) => !taken.has(k));
+          taken.add(c);
+          pick[name] = c;
+        }
+        corners.current = { id: cur.id, pick };
+      }
+      const { pick } = corners.current;
+      const what = cur.kind === 'photo' ? ['a foto', 'da foto'] : ['o texto', 'do texto'];
+      controls = (
+        <>
+          <div className="layer-frame" style={{ left: cx, top: cy, width: hw * 2, height: hh * 2, transform: turn }} />
+          <button
+            type="button"
+            className="layer-ctl layer-ctl--remove"
+            data-layer={cur.id}
+            style={{ ...spots[pick.remove], transform: 'translate(-50%, -50%)' }}
+            aria-label={cur.kind === 'photo' ? 'Tirar foto' : 'Apagar texto'}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={() => remove(cur.id)}
+          >
+            <X size={16} strokeWidth={3} />
+          </button>
+          <span
+            className="layer-ctl layer-ctl--rotate"
+            data-layer={cur.id}
+            style={spots[pick.rotate]}
+            role="presentation"
+            title={`Arraste para girar ${what[0]}`}
+            onPointerDown={(e) => onHandleDown(e, cur, 'rotate')}
+          >
+            <RotateCw size={17} strokeWidth={2.6} />
+          </span>
+          <span
+            className="layer-ctl layer-ctl--resize"
+            data-layer={cur.id}
+            style={spots[pick.resize]}
+            role="presentation"
+            title={`Arraste para mudar o tamanho ${what[1]}`}
+            onPointerDown={(e) => onHandleDown(e, cur, 'resize')}
+          >
+            <MoveDiagonal2 size={17} strokeWidth={2.6} />
+          </span>
+        </>
+      );
+    }
+  }
+
+  const coarse = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+
   return (
-    <div
-      ref={box}
-      className={`layers ${gesturing ? 'is-gesturing' : ''} ${readOnly ? 'layers--static' : ''} ${className}`}
-      onPointerDown={readOnly ? undefined : onStageDown}
-      {...handlers}
-    >
-      {size.w > 0 &&
-        layers.map((l) => {
-          const selected = sel === l.id;
-          const inv = { transform: `scale(${1 / (l.scale || 1)})` };
-          const common = {
-            'data-layer': l.id,
-            onPointerDown: readOnly ? undefined : (e) => onLayerDown(e, l),
-            ...handlers,
-          };
-          const place = {
-            left: `${l.x * 100}%`,
-            top: `${l.y * 100}%`,
-            zIndex: l.z || 0,
-            transform: `translate(-50%, -50%) rotate(${l.rot || 0}rad) scale(${l.scale || 1})`,
-          };
-          const ui = selected && (
-            <>
-              <button
-                type="button"
-                className="layer__remove"
-                style={inv}
-                aria-label={l.kind === 'photo' ? 'Tirar foto' : 'Apagar texto'}
-                onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => remove(l.id)}
-              >
-                <X size={14} strokeWidth={3} />
-              </button>
-              <span
-                className="layer__handle"
-                style={inv}
-                role="presentation"
-                title="Arraste para girar e mudar o tamanho"
-                onPointerDown={(e) => onHandleDown(e, l)}
-                {...handlers}
-              />
-            </>
-          );
-          if (l.kind === 'photo') {
-            const w = l.w * size.w;
-            const h = w * (l.image.height / l.image.width);
+    <>
+      <div
+        ref={box}
+        className={`layers ${gesturing ? 'is-gesturing' : ''} ${readOnly ? 'layers--static' : ''} ${className}`}
+        onPointerDown={readOnly ? undefined : onStageDown}
+        {...handlers}
+      >
+        {size.w > 0 &&
+          layers.map((l) => {
+            const selected = sel === l.id;
+            const common = {
+              'data-layer': l.id,
+              ref: (el) => (el ? els.current.set(l.id, el) : els.current.delete(l.id)),
+              onPointerDown: readOnly ? undefined : (e) => onLayerDown(e, l),
+            };
+            const place = {
+              left: `${l.x * 100}%`,
+              top: `${l.y * 100}%`,
+              zIndex: l.z || 0,
+              transform: `translate(-50%, -50%) rotate(${l.rot || 0}rad) scale(${l.scale || 1})`,
+            };
+            if (l.kind === 'photo') {
+              const w = l.w * size.w;
+              const h = w * (l.image.height / l.image.width);
+              return (
+                <div key={l.id} {...common} className={`layer layer--photo ${selected ? 'is-selected' : ''}`} style={{ ...place, width: w, height: h }}>
+                  <img
+                    src={l.image.url}
+                    alt=""
+                    draggable="false"
+                    style={{ borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
+                  />
+                </div>
+              );
+            }
+            const font = fontOf(l.font);
             return (
-              <div key={l.id} {...common} className={`layer layer--photo ${selected ? 'is-selected' : ''}`} style={{ ...place, width: w, height: h }}>
-                <img
-                  src={l.image.url}
-                  alt=""
-                  draggable="false"
-                  style={{ borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
-                />
-                {ui}
+              <div
+                key={l.id}
+                {...common}
+                className={`layer layer--text ${l.boxed ? 'layer--boxed' : ''} ${selected ? 'is-selected' : ''}`}
+                style={{
+                  ...place,
+                  ...cssFont(font),
+                  maxWidth: `${TEXT_WRAP * 100}%`,
+                  fontSize: l.size * k,
+                  color: l.boxed && l.color === '#ffffff' ? '#fff' : l.color,
+                  '--box-bg': l.color === '#ffffff' ? 'rgba(0,0,0,.78)' : '#fff',
+                }}
+              >
+                <TextLines l={l} />
               </div>
             );
-          }
-          const font = fontOf(l.font);
-          return (
-            <div
-              key={l.id}
-              {...common}
-              className={`layer layer--text ${l.boxed ? 'layer--boxed' : ''} ${selected ? 'is-selected' : ''}`}
-              style={{
-                ...place,
-                ...cssFont(font),
-                maxWidth: `${TEXT_WRAP * 100}%`,
-                fontSize: l.size * k,
-                color: l.boxed && l.color === '#ffffff' ? '#fff' : l.color,
-                '--box-bg': l.color === '#ffffff' ? 'rgba(0,0,0,.78)' : '#fff',
-              }}
-            >
-              <TextLines l={l} />
-              {ui}
+          })}
+      </div>
+      {!readOnly && (
+        <div ref={uiBox} className="layers-ui" {...handlers}>
+          {tip && controls && (
+            <div className="layers__tip" role="status">
+              Arraste para mover · <RotateCw size={12} strokeWidth={2.8} aria-label="alça de girar" /> gira ·{' '}
+              <MoveDiagonal2 size={12} strokeWidth={2.8} aria-label="alça de tamanho" /> muda o tamanho
+              {coarse ? ' · ou use dois dedos' : ' · ou a rodinha do mouse'}
             </div>
-          );
-        })}
-    </div>
+          )}
+          {controls}
+        </div>
+      )}
+    </>
   );
 }
 

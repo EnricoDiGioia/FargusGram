@@ -4128,14 +4128,6 @@ button.avatar {
   -webkit-user-select: none;
   -webkit-touch-callout: none;
 }
-.layer.is-selected::before {
-  content: '';
-  position: absolute;
-  inset: -8px;
-  border: 1.5px dashed rgba(255, 255, 255, 0.85);
-  border-radius: 6px;
-  pointer-events: none;
-}
 .layer--photo img {
   display: block;
   width: 100%;
@@ -4167,37 +4159,102 @@ button.avatar {
   content: '\A';
   white-space: pre;
 }
-.layer__remove,
-.layer__handle {
+/* moldura e alças da camada escolhida (numa folha acima das ferramentas) */
+.layers-ui {
   position: absolute;
-  width: 26px;
-  height: 26px;
+  inset: 0;
+  z-index: 4;
+  overflow: hidden;
+  pointer-events: none;
+}
+.layer-frame {
+  position: absolute;
+  border: 1.5px dashed rgba(255, 255, 255, 0.9);
+  border-radius: 8px;
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
+  pointer-events: none;
+}
+.layer-ctl {
+  position: absolute;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 2px solid #fff;
   border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
-  text-shadow: none;
-}
-.layer__remove {
-  top: -21px;
-  left: -21px;
   background: #fff;
   color: #111;
-}
-/* bolinha de girar e mudar o tamanho */
-.layer__handle {
-  right: -21px;
-  bottom: -21px;
-  background: var(--accent);
-  border: 3px solid #fff;
-  cursor: grab;
+  box-shadow: 0 1px 7px rgba(0, 0, 0, 0.45);
+  pointer-events: auto;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+}
+/* área de toque maior que o desenho (46px) */
+.layer-ctl::after {
+  content: '';
+  position: absolute;
+  inset: -9px;
+  border-radius: 50%;
+}
+.layer-ctl svg {
+  pointer-events: none;
+}
+.layer-ctl--rotate,
+.layer-ctl--resize {
+  background: var(--accent);
+  color: #fff;
+  cursor: grab;
+}
+.layer-ctl--resize {
+  cursor: nwse-resize;
+}
+.layers__tip {
+  position: absolute;
+  bottom: 16px;
+  left: 68px;
+  right: 68px;
+  width: fit-content;
+  margin: 0 auto;
+  padding: 7px 12px;
+  border-radius: 14px;
+  background: rgba(0, 0, 0, 0.74);
+  color: #fff;
+  font-size: 12.5px;
+  font-weight: 500;
+  line-height: 1.4;
+  text-align: center;
+  pointer-events: none;
+  animation: fade-in 0.25s ease;
+}
+.layers__tip svg {
+  display: inline-block;
+  vertical-align: -1px;
 }
 .story-editor__top,
 .story-editor__gallery,
 .story-sticker {
   z-index: 3;
+}
+/* enquanto mexe numa camada, os botões somem (como no Instagram): a vista
+   fica livre e o segundo dedo pode cair em cima deles */
+.story-editor__top,
+.story-editor__gallery,
+.editor__tools,
+.editor__aspect {
+  transition: opacity 0.15s ease;
+}
+.story-editor__frame:has(.layers.is-gesturing) :is(.story-editor__top, .story-editor__gallery),
+.editor__stage:has(.layers.is-gesturing) :is(.editor__tools, .editor__aspect) {
+  opacity: 0;
+}
+.story-editor__frame:has(.layers.is-gesturing) :is(.story-editor__top > *, .story-editor__gallery, .story-sticker),
+.editor__stage:has(.layers.is-gesturing) :is(.editor__tools, .editor__aspect) {
+  pointer-events: none;
 }
 /* editor de texto: escolha da fonte */
 .text-editor__fonts {

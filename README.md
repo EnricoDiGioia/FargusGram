@@ -186,9 +186,11 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 Os dois editores, o de story e o de publicação, têm as mesmas ferramentas:
 
 - **Texto:** toque em **Aa**, escreva e escolha a fonte (Clássica, Moderna, Máquina, Caneta, Forte ou Elegante), a cor, o fundo e o tamanho. Dá para colocar vários textos.
-- **Foto por cima:** toque no ícone de foto com **+** e escolha uma ou mais fotos, até 6. Elas entram como uma colagem, com cantos arredondados e sombra.
-- **Mexer:** arraste com um dedo. Com dois dedos, gire e mude o tamanho. No computador, toque na camada e arraste a bolinha roxa do canto. O giro "gruda" no reto quando passa perto de 0° ou 90°.
-- **Editar ou tirar:** tocar num texto abre para editar. O **✕** que aparece na camada tocada tira ela. A camada tocada vem para a frente das outras.
+- **Foto por cima:** toque no ícone de foto com **+** e escolha uma ou mais fotos, até 6. Elas entram lado a lado, como uma colagem (com cantos arredondados e sombra), sem uma cobrir a outra.
+- **Mover:** arraste a camada com o dedo (ou o mouse). Enquanto você mexe, os botões do editor somem para liberar a vista.
+- **Girar e mudar o tamanho:** a camada tocada (e a que acabou de entrar) mostra três alças nos cantos: **↻** gira, **⤡** aumenta ou diminui e **✕** tira. É só arrastar a alça, com um dedo no celular ou com o mouse no computador. As alças nunca saem do quadro nem ficam em cima dos botões, então dá para pegar mesmo com a camada no canto.
+- **Atalhos:** no celular, dois dedos giram e mudam o tamanho de uma vez (o segundo dedo pode cair fora da camada). No computador, a rodinha do mouse em cima da camada muda o tamanho, e com **Shift** ela gira; no trackpad, a pinça também funciona. O giro "gruda" no reto quando passa perto de 0° ou 90°.
+- **Editar:** tocar num texto abre para editar. A camada tocada vem para a frente das outras.
 - **Na publicação,** cada foto do carrossel tem os seus próprios textos e fotos. As camadas não pegam o filtro, que fica só na foto de baixo.
 
 A imagem publicada sai exatamente como aparece no editor. As fontes vêm junto com o app (umas 130 KB, baixadas só quando alguém abre um editor), então funcionam em qualquer celular e ficam gravadas na foto: quem vê não precisa ter a fonte.

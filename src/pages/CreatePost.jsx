@@ -175,7 +175,7 @@ export default function CreatePost() {
     if (!files.length) return;
     const i = current;
     setPreparing({ done: 0, total: files.length });
-    const added = await photoLayersFrom(files, itemsRef.current[i].layers, toast);
+    const added = await photoLayersFrom(files, itemsRef.current[i].layers, toast, 1 / aspect);
     setPreparing(null);
     setLayers(i, (ls) => [...ls, ...added]);
   };
@@ -269,7 +269,13 @@ export default function CreatePost() {
                   onChange={(crop) => setItem(current, { crop })}
                   filter={filterCss(cur.filter)}
                 />
-                <LayerStage key={current} layers={cur.layers} onChange={(ls) => setLayers(current, ls)} onEditText={setEditing} />
+                <LayerStage
+                  key={current}
+                  layers={cur.layers}
+                  onChange={(ls) => setLayers(current, ls)}
+                  onEditText={setEditing}
+                  avoid=".editor__tools, .editor__aspect"
+                />
               </div>
               <div className="editor__tools">
                 <button type="button" className="editor__tool" onClick={addText} aria-label="Adicionar texto">
@@ -327,7 +333,7 @@ export default function CreatePost() {
             </div>
             <p className="muted center small">
               {cur.layers.length
-                ? 'Toque no texto para editar · dois dedos (ou a bolinha) giram e mudam o tamanho'
+                ? 'Toque numa camada: ↻ gira · ⤡ muda o tamanho · ✕ tira · toque no texto para editar'
                 : 'Arraste para enquadrar · dois dedos para zoom · Aa para escrever por cima'}
             </p>
           </div>

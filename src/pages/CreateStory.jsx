@@ -109,7 +109,7 @@ export default function CreateStory() {
     e.target.value = '';
     if (!files.length) return;
     setBusy(true);
-    const added = await photoLayersFrom(files, layersRef.current, toast);
+    const added = await photoLayersFrom(files, layersRef.current, toast, 1 / ASPECT);
     setLayers((ls) => [...ls, ...added]);
     setBusy(false);
   };
@@ -263,7 +263,7 @@ export default function CreateStory() {
           </button>
         )}
 
-        <LayerStage layers={layers} onChange={setLayers} onEditText={setEditing} />
+        <LayerStage layers={layers} onChange={setLayers} onEditText={setEditing} avoid=".story-editor__top > *, .story-editor__gallery" />
 
         {music && sticker && stickerImg && (
           <img
