@@ -13,6 +13,7 @@ import { mediaUrl } from '../lib/supabase';
 import { emit } from '../lib/events';
 import { count, timeLong } from '../lib/format';
 import { cleanMusic } from '../lib/music';
+import { fadeIn } from '../lib/fade';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -52,6 +53,7 @@ export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, 
         {media.map((m, i) => (
           <div className="carousel__slide" key={m.path || i}>
             <img
+              {...fadeIn}
               src={mediaUrl(m.path)}
               alt=""
               loading={i === 0 ? 'eager' : 'lazy'}

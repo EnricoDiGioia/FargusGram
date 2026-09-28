@@ -1,5 +1,5 @@
 import { lazy, Suspense, useEffect } from 'react';
-import { HashRouter, Navigate, Outlet, Route, Routes, useLocation, useNavigate } from 'react-router';
+import { HashRouter, Navigate, Route, Routes, useLocation, useNavigate } from 'react-router';
 import { SessionProvider, useSession } from './state/session';
 import { UnreadProvider } from './state/unread';
 import { ToastProvider, useToast } from './state/toast';
@@ -7,6 +7,8 @@ import { ConfirmProvider, PageLoader, Button } from './components/ui';
 import BottomNav from './components/BottomNav';
 import ScrollManager from './components/ScrollManager';
 import ViewportWatcher from './components/ViewportWatcher';
+import { RouteErrorBoundary } from './components/ErrorBoundary';
+import { RouteView, Screen } from './components/Motion';
 import { RiftMark } from './components/Brand';
 import { isConfigured } from './lib/supabase';
 import { onSwUpdate } from './lib/pwa';
@@ -181,11 +183,16 @@ function PushBridge() {
 function Shell() {
   return (
     <div className="app">
-      <Outlet />
+      <RouteErrorBoundary>
+        <RouteView />
+      </RouteErrorBoundary>
       <BottomNav />
     </div>
   );
 }
+
+// telas cheias ganham a animação de entrada (fadeOnly: só esmaece)
+const screen = (el, { fadeOnly = false } = {}) => <Screen fadeOnly={fadeOnly}>{el}</Screen>;
 
 function AppRoutes() {
   const { characters } = useSession();
@@ -197,36 +204,39 @@ function AppRoutes() {
   }, []);
 
   return (
-    <Suspense fallback={<PageLoader />}>
-      <ScrollManager />
-      <ViewportWatcher />
-      <PushBridge />
-      <Routes>
-        <Route element={<Shell />}>
-          <Route index element={<Home />} />
-          <Route path="explorar" element={<Explore />} />
-          <Route path="tag/:tag" element={<Hashtag />} />
-          <Route path="atividade" element={<Activity />} />
-          <Route path="u/:handle" element={<Profile />} />
-          <Route path="u/:handle/:kind" element={<FollowList />} />
-          <Route path="p/:id" element={<PostPage />} />
-          <Route path="p/:id/curtidas" element={<Likers />} />
-          <Route path="direct" element={<Inbox />} />
-          <Route path="configuracoes" element={<Settings />} />
-          <Route path="admin" element={<Admin />} />
-          <Route path="editar-perfil" element={<EditProfile />} />
-          <Route path="novo-personagem" element={<NewCharacter />} />
-        </Route>
-        <Route path="p/:id/comentarios" element={<Comments />} />
-        <Route path="p/:id/editar" element={<EditPost />} />
-        <Route path="direct/novo" element={<NewMessage />} />
-        <Route path="direct/:id" element={<Chat />} />
-        <Route path="criar/post" element={<CreatePost />} />
-        <Route path="criar/story" element={<CreateStory />} />
-        <Route path="stories/:characterId" element={<StoryViewer />} />
-        <Route path="cadastro" element={<Navigate to="/" replace />} />
-        <Route path="*" element={<Navigate to="/" replace />} />
-      </Routes>
-    </Suspense>
+    <RouteErrorBoundary full>
+      <Suspense fallback={<PageLoader />}>
+        <ScrollManager />
+        <ViewportWatcher />
+        <PushBridge />
+        <Routes>
+          <Route element={<Shell />}>
+            <Route index element={<Home />} />
+            <Route path="explorar" element={<Explore />} />
+            <Route path="tag/:tag" element={<Hashtag />} />
+            <Route path="atividade" element={<Activity />} />
+            <Route path="u/:handle" element={<Profile />} />
+            <Route path="u/:handle/:kind" element={<FollowList />} />
+            <Route path="p/:id" element={<PostPage />} />
+            <Route path="p/:id/curtidas" element={<Likers />} />
+            <Route path="direct" element={<Inbox />} />
+            <Route path="configuracoes" element={<Settings />} />
+            <Route path="admin" element={<Admin />} />
+            <Route path="editar-perfil" element={<EditProfile />} />
+            <Route path="novo-personagem" element={<NewCharacter />} />
+          </Route>
+          {/* telas cheias; comentários só esmaecem porque o campo de texto é fixo */}
+          <Route path="p/:id/comentarios" element={screen(<Comments />, { fadeOnly: true })} />
+          <Route path="p/:id/editar" element={screen(<EditPost />)} />
+          <Route path="direct/novo" element={screen(<NewMessage />)} />
+          <Route path="direct/:id" element={screen(<Chat />)} />
+          <Route path="criar/post" element={screen(<CreatePost />)} />
+          <Route path="criar/story" element={screen(<CreateStory />)} />
+          <Route path="stories/:characterId" element={screen(<StoryViewer />)} />
+          <Route path="cadastro" element={<Navigate to="/" replace />} />
+          <Route path="*" element={<Navigate to="/" replace />} />
+        </Routes>
+      </Suspense>
+    </RouteErrorBoundary>
   );
 }

@@ -89,7 +89,9 @@ export default function Profile() {
 
   useEffect(() => on('profile:change', ({ id }) => p && id === p.id && reload()), [p, reload]);
   useEffect(() => on('story:change', () => reload()), [reload]);
-  useEffect(() => setTab('grid'), [handle]);
+  useEffect(() => {
+    setTab('grid');
+  }, [handle]);
 
   if (loading && !p) return <PageLoader />;
   if (error && !p)

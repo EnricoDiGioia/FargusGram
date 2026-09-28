@@ -11,6 +11,7 @@ import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { realtime } from '../state/unread';
 import { mediaUrl } from '../lib/supabase';
+import { fadeIn } from '../lib/fade';
 import { on, emit } from '../lib/events';
 import { chatStamp } from '../lib/format';
 import { longPress } from '../lib/hooks';
@@ -46,7 +47,7 @@ function PostShare({ post }) {
         <Avatar character={post.character} size={24} />
         <Handle character={post.character} className="strong" badge={12} />
       </div>
-      {post.thumb && <img src={mediaUrl(post.thumb)} alt="" loading="lazy" />}
+      {post.thumb && <img {...fadeIn} src={mediaUrl(post.thumb)} alt="" loading="lazy" />}
       {post.caption && (
         <div className="msg-card__caption">
           <strong>{post.character.handle}</strong> {post.caption}
@@ -297,13 +298,19 @@ export default function Chat() {
     const reply = replyTo;
     setText('');
     setReplyTo(null);
-    const tmp = { id: 'tmp-' + Date.now(), pending: true, sender_id: active.id, kind: 'text', body, reply, created_at: new Date().toISOString() };
+    // key fixa: a bolha não "nasce de novo" (nem repete a animação) quando o envio confirma
+    const tmpId = 'tmp-' + Date.now();
+    const tmp = { id: tmpId, key: tmpId, pending: true, sender_id: active.id, kind: 'text', body, reply, created_at: new Date().toISOString() };
     stick.current = true;
     setMsgs((xs) => [...xs, tmp]);
     inputRef.current?.focus();
     try {
       const saved = await api.sendMessage({ conversation: id, sender: active.id, body, replyTo: reply?.id });
-      setMsgs((xs) => xs.map((m) => (m.id === tmp.id ? { ...tmp, ...saved, pending: false } : m)));
+      setMsgs((xs) =>
+        xs.some((m) => m.id === saved.id)
+          ? xs.filter((m) => m.id !== tmp.id) // o tempo real já trouxe a mensagem: sem duplicar
+          : xs.map((m) => (m.id === tmp.id ? { ...tmp, ...saved, pending: false } : m))
+      );
     } catch (err) {
       setMsgs((xs) => xs.map((m) => (m.id === tmp.id ? { ...m, failed: true } : m)));
       toast(api.errorMessage(err));
@@ -437,7 +444,7 @@ export default function Chat() {
           const sender = byId[m.sender_id];
           const lp = longPress(() => !m.pending && setMenuMsg(m));
           return (
-            <div key={m.id}>
+            <div key={m.key || m.id}>
               {showStamp && <div className="chat__stamp">{chatStamp(m.created_at)}</div>}
               <div className="msg-row" data-msg={m.id}>
                 <span className="msg-row__reply" aria-hidden="true">
@@ -493,6 +500,7 @@ export default function Chat() {
                     {m.kind === 'media' && m.media_path && (
                       <button type="button" className="msg__image" onClick={() => setLightbox(m.media_path)}>
                         <img
+                          {...fadeIn}
                           src={mediaUrl(m.media_path)}
                           alt=""
                           loading="lazy"

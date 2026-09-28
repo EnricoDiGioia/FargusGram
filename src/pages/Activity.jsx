@@ -10,6 +10,7 @@ import { useSession } from '../state/session';
 import { useUnread } from '../state/unread';
 import { useInfinite, useOnVisible } from '../lib/hooks';
 import { mediaUrl } from '../lib/supabase';
+import { fadeIn } from '../lib/fade';
 import { activityBucket, timeShort } from '../lib/format';
 import * as api from '../lib/api';
 
@@ -58,7 +59,7 @@ function Item({ n }) {
       {n.type === 'follow' ? (
         <FollowButton character={{ ...n.actor, is_following: n.is_following_actor, follows_you: true }} />
       ) : n.post_thumb ? (
-        <img className="notif__thumb" src={mediaUrl(n.post_thumb)} alt="" loading="lazy" />
+        <img {...fadeIn} className="notif__thumb" src={mediaUrl(n.post_thumb)} alt="" loading="lazy" />
       ) : null}
     </div>
   );

@@ -49,7 +49,9 @@ export default function PushSettings() {
     };
   }, [uid]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  useEffect(() => setPrefs(me?.push_prefs || {}), [me?.push_prefs]);
+  useEffect(() => {
+    setPrefs(me?.push_prefs || {});
+  }, [me?.push_prefs]);
 
   const toggle = async (on) => {
     setBusy('toggle');

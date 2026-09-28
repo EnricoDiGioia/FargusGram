@@ -22,7 +22,11 @@ export default function PostPage() {
     };
   }, [id, mutate, navigate]);
 
-  useEffect(() => window.scrollTo(0, 0), [id]);
+  // Chaves de propósito: nos navegadores novos scrollTo devolve uma Promise, e o
+  // React chamaria essa Promise como "limpeza" ao sair da tela (a tela ficava preta)
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [id]);
 
   return (
     <div className="page">

@@ -52,9 +52,10 @@ export function BackButton({ to, label = 'Voltar' }) {
     <IconButton
       label={label}
       onClick={() => {
-        if (to) navigate(to);
+        // back: true → a tela anterior entra com a animação de "voltar"
+        if (to) navigate(to, { state: { back: true } });
         else if (window.history.state && window.history.state.idx > 0) navigate(-1);
-        else navigate('/');
+        else navigate('/', { state: { back: true } });
       }}
     >
       <ChevronLeft size={28} strokeWidth={1.8} />

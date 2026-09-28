@@ -2,13 +2,14 @@ import { Link } from 'react-router';
 import { Copy, Heart, MessageCircle } from 'lucide-react';
 import { mediaUrl } from '../lib/supabase';
 import { count } from '../lib/format';
+import { fadeIn } from '../lib/fade';
 
 export default function PostGrid({ posts }) {
   return (
     <div className="grid">
       {posts.map((p) => (
         <Link key={p.id} to={`/p/${p.id}`} className="grid__cell" aria-label="Abrir publicação">
-          {p.thumb && <img src={mediaUrl(p.thumb)} alt="" loading="lazy" decoding="async" draggable="false" />}
+          {p.thumb && <img {...fadeIn} src={mediaUrl(p.thumb)} alt="" loading="lazy" decoding="async" draggable="false" />}
           {p.media_count > 1 && (
             <span className="grid__multi" aria-hidden="true">
               <Copy size={16} fill="currentColor" strokeWidth={1.5} />

@@ -13,7 +13,9 @@ export function FollowButton({ character, small = true, onChange, className = ''
   const toast = useToast();
   const [busy, setBusy] = useState(false);
   const [following, setFollowing] = useState(!!character.is_following);
-  useEffect(() => setFollowing(!!character.is_following), [character.is_following]);
+  useEffect(() => {
+    setFollowing(!!character.is_following);
+  }, [character.is_following]);
 
   if (!active || active.id === character.id) return null;
 

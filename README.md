@@ -168,6 +168,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - **Selo de verificado:** no Painel do admin, toque no selo ao lado do personagem.
 - **Tirar alguém do grupo:** no Supabase, abra **Authentication** → **Users** e apague o usuário. Tudo o que ele publicou some junto. Depois troque o código de convite.
 - **Contas novas só pelo app.** Criar usuário direto pelo painel do Supabase dá erro de propósito, porque não passa pelo código de convite.
+- **Se uma tela der erro:** aparece o aviso "Algo deu errado nesta tela" com **Tentar de novo** e **Recarregar**, em vez de a tela ficar toda preta. O texto pequeno embaixo diz qual foi o erro; tire um print dele para descobrir a causa. Se o aviso for "Saiu uma versão nova do FargusGram", é só tocar em **Recarregar**.
 
 ## Limites do plano grátis
 

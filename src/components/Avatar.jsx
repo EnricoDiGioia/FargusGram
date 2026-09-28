@@ -1,4 +1,5 @@
 import { mediaUrl } from '../lib/supabase';
+import { fadeIn } from '../lib/fade';
 
 const PALETTE = [
   ['#06b6d4', '#8b5cf6'],
@@ -29,7 +30,11 @@ export default function Avatar({ character, src, size = 32, ring = 'none', onCli
       className="avatar__img"
       style={{ width: size, height: size, fontSize: Math.max(10, size * 0.42), background: url ? undefined : `linear-gradient(135deg, ${a}, ${b})` }}
     >
-      {url ? <img src={url} alt={alt ?? (character?.handle ? `Foto de @${character.handle}` : '')} loading="lazy" decoding="async" draggable="false" /> : initial}
+      {url ? (
+        <img {...fadeIn} src={url} alt={alt ?? (character?.handle ? `Foto de @${character.handle}` : '')} loading="lazy" decoding="async" draggable="false" />
+      ) : (
+        initial
+      )}
     </span>
   );
   const Tag = onClick ? 'button' : 'span';
