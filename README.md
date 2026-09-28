@@ -186,6 +186,7 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 Os dois editores, o de story e o de publicação, têm as mesmas ferramentas:
 
 - **Texto:** toque em **Aa**, escreva e escolha a fonte (Clássica, Moderna, Máquina, Caneta, Forte ou Elegante), a cor, o fundo e o tamanho. Dá para colocar vários textos.
+- **Foto do story:** a foto escolhida pelo quadradinho da galeria (canto de baixo) entra inteira na tela, atrás de tudo, e se mexe como as outras camadas: arraste, gire e mude o tamanho à vontade. Onde ela não cobre, aparece um degradê com as cores da própria foto; a paleta, do lado direito, troca por outros fundos. A lixeira (ou o **✕** da foto) tira a foto.
 - **Foto por cima:** toque no ícone de foto com **+** e escolha uma ou mais fotos, até 6. Elas entram lado a lado, como uma colagem (com cantos arredondados e sombra), sem uma cobrir a outra.
 - **Mover:** arraste a camada com o dedo (ou o mouse). Enquanto você mexe, os botões do editor somem para liberar a vista.
 - **Girar e mudar o tamanho:** a camada tocada (e a que acabou de entrar) mostra três alças nos cantos: **↻** gira, **⤡** aumenta ou diminui e **✕** tira. É só arrastar a alça, com um dedo no celular ou com o mouse no computador. As alças nunca saem do quadro nem ficam em cima dos botões, então dá para pegar mesmo com a camada no canto.

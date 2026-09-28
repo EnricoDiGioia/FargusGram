@@ -2446,11 +2446,6 @@ button.avatar {
   overflow: hidden;
   background: #111;
 }
-.story-editor__photo {
-  position: absolute;
-  inset: 0;
-  height: 100%;
-}
 .story-editor__bg {
   position: absolute;
   inset: 0;

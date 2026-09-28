@@ -2,14 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
 import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
-import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
 import { CloseFriendsSheet } from '../components/CloseFriends';
-import { LayerStage, TextEditor, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
+import { LayerStage, TextEditor, newBaseLayer, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
-import { prepareImage, renderStory, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
+import { photoColors, prepareImage, renderStory, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
 import { emit } from '../lib/events';
 import { pageCache } from '../lib/storage';
 import { clipOf, musicForDb, musicLabel, player } from '../lib/music';
@@ -27,10 +26,10 @@ export default function CreateStory() {
   const fileInput = useRef(null);
   const photoInput = useRef(null);
   const frame = useRef(null);
-  const [image, setImage] = useState(null);
-  const [crop, setCrop] = useState(null);
-  const [gi, setGi] = useState(0);
-  const [layers, setLayers] = useState([]); // textos e fotos por cima (components/Layers)
+  const [gi, setGi] = useState(0); // fundo: -1 = cores da foto; 0… = degradês prontos
+  const [photoBg, setPhotoBg] = useState(null);
+  // textos e fotos (components/Layers); a foto da galeria é a camada `base`
+  const [layers, setLayers] = useState([]);
   const [editing, setEditing] = useState(null);
   const [scale, setScale] = useState(0.35);
   const [busy, setBusy] = useState(false);
@@ -98,7 +97,6 @@ export default function CreateStory() {
     return () => ro.disconnect();
   }, []);
 
-  useEffect(() => () => image && URL.revokeObjectURL(image.url), [image]);
   const layersRef = useRef(layers);
   layersRef.current = layers;
   useEffect(() => () => revokeLayers(layersRef.current), []);
@@ -122,6 +120,9 @@ export default function CreateStory() {
     setEditing({});
   };
 
+  // foto da galeria: entra inteira no quadro, atrás de tudo, e dá para mover,
+  // girar e mudar o tamanho como as outras; o fundo pega as cores dela
+  const base = layers.find((l) => l.base);
   const pick = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -129,14 +130,30 @@ export default function CreateStory() {
     setBusy(true);
     try {
       const img = await prepareImage(file, 2200);
-      setImage(img);
-      setCrop(defaultCrop(img));
+      const old = layersRef.current.find((l) => l.base);
+      if (old) URL.revokeObjectURL(old.image.url);
+      setLayers((ls) => [...ls.filter((l) => !l.base), newBaseLayer(img, 1 / ASPECT)]);
+      const colors = photoColors(img.img);
+      setPhotoBg(colors);
+      if (colors) setGi(-1);
     } catch (err) {
       toast(err.message);
     } finally {
       setBusy(false);
     }
   };
+  const removeBase = () => {
+    const old = layersRef.current.find((l) => l.base);
+    if (old) URL.revokeObjectURL(old.image.url);
+    setLayers((ls) => ls.filter((l) => !l.base));
+  };
+  const nextBackground = () =>
+    setGi((g) => {
+      const n = STORY_BACKGROUNDS.length;
+      if (base && photoBg) return g + 1 >= n ? -1 : g + 1;
+      return (Math.max(0, g) + 1) % n;
+    });
+  const bg = gi === -1 && base && photoBg ? photoBg : STORY_BACKGROUNDS[Math.max(0, gi)];
 
   const doneText = (t) => {
     setEditing(null);
@@ -172,7 +189,7 @@ export default function CreateStory() {
   };
 
   const close = async () => {
-    if (image || layers.length || music) {
+    if (layers.length || music) {
       const ok = await confirm({ title: 'Descartar story?', confirmText: 'Descartar', danger: true });
       if (!ok) return;
     }
@@ -180,7 +197,7 @@ export default function CreateStory() {
   };
 
   const isEmpty = () => {
-    if (image || layers.length || music) return false;
+    if (layers.length || music) return false;
     toast('Escolha uma foto, escreva um texto ou coloque uma música');
     return true;
   };
@@ -214,9 +231,7 @@ export default function CreateStory() {
     let thumbPath;
     try {
       const { blob, thumb, width, height } = await renderStory({
-        img: image?.img,
-        crop: image ? cropRect(image, ASPECT, crop) : null,
-        gradient: STORY_BACKGROUNDS[gi],
+        gradient: bg,
         layers,
         stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
@@ -244,24 +259,21 @@ export default function CreateStory() {
     }
   };
 
-  const [a, b] = STORY_BACKGROUNDS[gi];
+  const [a, b] = bg;
 
   return (
     <FullScreen className={`story-editor ${editing ? 'is-editing' : ''}`}>
       <div className="story-editor__frame" ref={frame}>
-        {image ? (
-          <Cropper image={image} aspect={ASPECT} value={crop} onChange={setCrop} grid={false} className="story-editor__photo" />
-        ) : (
-          <button
-            type="button"
-            className="story-editor__bg"
-            style={{ background: `linear-gradient(160deg, ${a}, ${b})` }}
-            onClick={() => !layers.length && addText()}
-            aria-label="Escrever texto"
-          >
-            {!layers.length && <span>Toque para escrever</span>}
-          </button>
-        )}
+        <button
+          type="button"
+          className="story-editor__bg"
+          style={{ background: `linear-gradient(160deg, ${a}, ${b})` }}
+          onClick={() => !layers.length && addText()}
+          aria-label="Escrever texto"
+          tabIndex={layers.length ? -1 : 0}
+        >
+          {!layers.length && <span>Toque para escrever</span>}
+        </button>
 
         <LayerStage layers={layers} onChange={setLayers} onEditText={setEditing} avoid=".story-editor__top > *, .story-editor__gallery" />
 
@@ -298,13 +310,11 @@ export default function CreateStory() {
             >
               <Music2 size={25} />
             </button>
-            {!image && (
-              <button type="button" className="icon-btn icon-btn--light" onClick={() => setGi((g) => (g + 1) % STORY_BACKGROUNDS.length)} aria-label="Trocar fundo">
-                <Palette size={26} />
-              </button>
-            )}
-            {image && (
-              <button type="button" className="icon-btn icon-btn--light" onClick={() => setImage(null)} aria-label="Remover foto">
+            <button type="button" className="icon-btn icon-btn--light" onClick={nextBackground} aria-label="Trocar fundo">
+              <Palette size={26} />
+            </button>
+            {base && (
+              <button type="button" className="icon-btn icon-btn--light" onClick={removeBase} aria-label="Remover foto">
                 <Trash2 size={24} />
               </button>
             )}
@@ -312,7 +322,7 @@ export default function CreateStory() {
         </div>
 
         <button type="button" className="story-editor__gallery" onClick={() => fileInput.current?.click()} aria-label="Escolher foto da galeria">
-          {busy && !image ? <Spinner size={20} /> : <Images size={26} />}
+          {busy ? <Spinner size={20} /> : <Images size={26} />}
         </button>
       </div>
 

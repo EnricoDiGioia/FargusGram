@@ -29,6 +29,15 @@ export function newTextLayer(layers, fields) {
   return { id: newId(), kind: 'text', x: 0.5, y: 0.34 + (n % 5) * 0.1, rot: 0, scale: 1, z: topZ(layers) + 1, font: 'classica', size: 76, color: '#ffffff', boxed: false, ...fields };
 }
 
+// Foto principal do story (a da galeria): é uma camada como as outras (dá
+// para mover, girar e mudar o tamanho), mas fica sempre atrás, sem cantos
+// arredondados nem sombra, e entra inteira no quadro. ratio = altura / largura.
+export function newBaseLayer(image, ratio = 16 / 9) {
+  const w = Math.min(1, ratio / (image.height / image.width));
+  return { id: newId(), kind: 'photo', base: true, image, x: 0.5, y: 0.5, rot: 0, scale: 1, z: 0, w };
+}
+const isOverlayPhoto = (l) => l.kind === 'photo' && !l.base;
+
 // área ocupada por uma foto, em larguras do quadro (ratio = altura / largura do quadro)
 function photoBox(l, ratio) {
   const w = l.w * (l.scale || 1);
@@ -42,7 +51,7 @@ const overlap = (a, b) =>
 // grade (2 colunas; 3 linhas no story, começando pela do meio), nos lugares
 // que menos cobrem as fotos que já estão lá. ratio = altura / largura do quadro.
 export function placePhotos(layers, images, ratio = 16 / 9) {
-  const existing = layers.filter((l) => l.kind === 'photo');
+  const existing = layers.filter(isOverlayPhoto);
   let z = topZ(layers);
   if (!existing.length && images.length === 1) {
     const image = images[0];
@@ -79,7 +88,7 @@ export function placePhotos(layers, images, ratio = 16 / 9) {
 
 // abre as fotos escolhidas (menores que a principal: poupa memória)
 export async function photoLayersFrom(files, layers, onError, ratio) {
-  const room = MAX_PHOTO_LAYERS - layers.filter((l) => l.kind === 'photo').length;
+  const room = MAX_PHOTO_LAYERS - layers.filter(isOverlayPhoto).length;
   const images = [];
   for (const file of [...files].slice(0, Math.max(0, room))) {
     try {
@@ -131,11 +140,12 @@ function TextLines({ l }) {
   ));
 }
 
-// cantos preferidos de cada alça (cantos da camada, girando junto com ela)
+// lugares preferidos de cada alça: os cantos da camada e, se estiverem todos
+// ocupados por botões (camada do tamanho do quadro), o meio das beiradas
 const CORNER_PREFS = [
-  ['resize', ['br', 'bl', 'tr', 'tl']],
-  ['rotate', ['tr', 'tl', 'br', 'bl']],
-  ['remove', ['tl', 'bl', 'tr', 'br']],
+  ['resize', ['br', 'bl', 'tr', 'tl', 'b', 'r', 'l', 't']],
+  ['rotate', ['tr', 'tl', 'br', 'bl', 't', 'r', 'l', 'b']],
+  ['remove', ['tl', 'bl', 'tr', 'br', 'l', 't', 'b', 'r']],
 ];
 const HIT = 23; // raio da área de toque das alças
 
@@ -350,9 +360,9 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
       return;
     }
     g.current = { id: l.id, pointers: new Map([[e.pointerId, pt(e)]]), moved: false, t0: Date.now(), mode: 'move' };
-    // a camada tocada vem para a frente
+    // a camada tocada vem para a frente (a foto principal fica sempre atrás)
     const z = topZ(layersRef.current);
-    if ((l.z || 0) < z) update(l.id, { z: z + 1 });
+    if (!l.base && (l.z || 0) < z) update(l.id, { z: z + 1 });
     setSel(l.id);
     setGesturing(true);
     begin();
@@ -469,15 +479,20 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
         top: clamp(cy + dx * sin + dy * cos, EDGE, size.h - EDGE),
         transform: turn,
       });
-      const spots = { tl: at(-ex, -ey), tr: at(ex, -ey), br: at(ex, ey), bl: at(-ex, ey) };
+      const spots = { tl: at(-ex, -ey), tr: at(ex, -ey), br: at(ex, ey), bl: at(-ex, ey), t: at(0, -ey), r: at(ex, 0), b: at(0, ey), l: at(-ex, 0) };
       // cada alça vai para o primeiro canto livre (que não caia em cima de um
       // botão); durante um gesto ficam onde estavam, para não pular do dedo
       if (!gesturing || corners.current?.id !== cur.id) {
         const blocked = (p) => obstacles.some((o) => p.left + HIT > o.x - 4 && p.left - HIT < o.x + o.w + 4 && p.top + HIT > o.y - 4 && p.top - HIT < o.y + o.h + 4);
         const taken = new Set();
         const pick = {};
+        // perto demais de uma alça já posta (acontece quando as duas vão para a beirada)
+        const crowded = (k) => [...taken].some((t) => Math.hypot(spots[k].left - spots[t].left, spots[k].top - spots[t].top) < HIT * 2);
         for (const [name, prefs] of CORNER_PREFS) {
-          const c = prefs.find((k) => !taken.has(k) && !blocked(spots[k])) || prefs.find((k) => !taken.has(k));
+          const c =
+            prefs.find((k) => !taken.has(k) && !blocked(spots[k]) && !crowded(k)) ||
+            prefs.find((k) => !taken.has(k) && !crowded(k)) ||
+            prefs.find((k) => !taken.has(k));
           taken.add(c);
           pick[name] = c;
         }
@@ -552,12 +567,17 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
               const w = l.w * size.w;
               const h = w * (l.image.height / l.image.width);
               return (
-                <div key={l.id} {...common} className={`layer layer--photo ${selected ? 'is-selected' : ''}`} style={{ ...place, width: w, height: h }}>
+                <div
+                  key={l.id}
+                  {...common}
+                  className={`layer layer--photo ${l.base ? 'layer--base' : ''} ${selected ? 'is-selected' : ''}`}
+                  style={{ ...place, width: w, height: h }}
+                >
                   <img
                     src={l.image.url}
                     alt=""
                     draggable="false"
-                    style={{ borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
+                    style={l.base ? undefined : { borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
                   />
                 </div>
               );

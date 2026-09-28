@@ -245,6 +245,29 @@ export const STORY_BACKGROUNDS = [
   ['#450a0a', '#b91c1c'],
 ];
 
+// Fundo em degradê com as cores da própria foto (de cima e de baixo, um
+// pouco mais escuras), como no Instagram quando a foto não cobre o story todo
+export function photoColors(img) {
+  try {
+    const c = newCanvas(4, 8);
+    const ctx = c.getContext('2d', { willReadFrequently: true });
+    ctx.drawImage(img, 0, 0, 4, 8);
+    const d = ctx.getImageData(0, 0, 4, 8).data;
+    releaseCanvas(c);
+    const avg = (y0, y1) => {
+      const t = [0, 0, 0];
+      for (let y = y0; y < y1; y++)
+        for (let x = 0; x < 4; x++) for (let k = 0; k < 3; k++) t[k] += d[(y * 4 + x) * 4 + k];
+      const n = (y1 - y0) * 4;
+      const hex = t.map((v) => Math.round((v / n) * 0.72).toString(16).padStart(2, '0')).join('');
+      return `#${hex}`;
+    };
+    return [avg(0, 2), avg(6, 8)];
+  } catch {
+    return null;
+  }
+}
+
 export const STORY_FONT = '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif';
 
 export function wrapLines(ctx, text, maxWidth) {
@@ -329,6 +352,12 @@ export const photoRadius = (w, h) => Math.min(w, h) * 0.04;
 function drawPhotoLayer(ctx, l, W) {
   const w = l.w * W;
   const h = w * (l.image.height / l.image.width);
+  // foto principal do story: sem cantos arredondados nem sombra
+  if (l.base) {
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(l.image.img, -w / 2, -h / 2, w, h);
+    return;
+  }
   const r = photoRadius(w, h);
   const k = (W / LAYER_REF_W) * (l.scale || 1);
   ctx.save();
