@@ -9,6 +9,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Feed com publicações de até 10 fotos, com recorte e filtros
 - Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
+- Textos e fotos por cima, no story e na publicação: vários textos em 6 fontes e fotos coladas, que dá para arrastar, girar e mudar o tamanho
 - Destaques no perfil: stories guardados com nome e capa, que ficam no perfil para sempre
 - Música nos posts e nos stories: busca no catálogo do Apple Music, escolha do trecho de 15 segundos e adesivo da música no story
 - Perfis, seguidores, marcação de personagens nas fotos, @menções e #hashtags
@@ -179,6 +180,18 @@ As músicas são as prévias de 30 segundos do Apple Music, que qualquer site po
 - **Deixar uma nota:** no Direct, toque em **Sua nota** (ou no balão em cima da sua foto no perfil). Escreva até 60 caracteres e, se quiser, toque em **Adicionar música**.
 - A nota dura 24 horas e aparece para quem segue o personagem. Uma nota nova substitui a anterior, e dá para apagar antes.
 - **Responder:** toque na nota de alguém, escreva e envie. A resposta chega no Direct, mostrando a nota respondida, e a pessoa recebe a notificação "respondeu à sua nota".
+
+## Textos e fotos por cima (story e publicação)
+
+Os dois editores, o de story e o de publicação, têm as mesmas ferramentas:
+
+- **Texto:** toque em **Aa**, escreva e escolha a fonte (Clássica, Moderna, Máquina, Caneta, Forte ou Elegante), a cor, o fundo e o tamanho. Dá para colocar vários textos.
+- **Foto por cima:** toque no ícone de foto com **+** e escolha uma ou mais fotos, até 6. Elas entram como uma colagem, com cantos arredondados e sombra.
+- **Mexer:** arraste com um dedo. Com dois dedos, gire e mude o tamanho. No computador, toque na camada e arraste a bolinha roxa do canto. O giro "gruda" no reto quando passa perto de 0° ou 90°.
+- **Editar ou tirar:** tocar num texto abre para editar. O **✕** que aparece na camada tocada tira ela. A camada tocada vem para a frente das outras.
+- **Na publicação,** cada foto do carrossel tem os seus próprios textos e fotos. As camadas não pegam o filtro, que fica só na foto de baixo.
+
+A imagem publicada sai exatamente como aparece no editor. As fontes vêm junto com o app (umas 130 KB, baixadas só quando alguém abre um editor), então funcionam em qualquer celular e ficam gravadas na foto: quem vê não precisa ter a fonte.
 
 ## Melhores amigos
 

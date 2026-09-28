@@ -2178,9 +2178,7 @@ button.avatar {
   max-height: 62dvh;
   overflow: hidden;
 }
-.editor__stage .cropper {
-  width: min(100%, calc(62dvh * var(--ar, 1)));
-}
+
 .editor__aspect {
   position: absolute;
   left: 12px;
@@ -2518,37 +2516,6 @@ button.avatar {
   background: #fff;
   color: #000;
   font-weight: 700;
-}
-.story-text {
-  position: absolute;
-  transform: translate(-50%, -50%);
-  max-width: 84%;
-  width: max-content;
-  text-align: center;
-  font-weight: 700;
-  line-height: 1.25;
-  white-space: pre-wrap;
-  overflow-wrap: break-word;
-  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
-  touch-action: none;
-  cursor: move;
-  user-select: none;
-  -webkit-user-select: none;
-}
-.story-text--boxed {
-  text-shadow: none;
-}
-.story-text__line {
-  display: inline;
-  background: var(--box-bg);
-  padding: 0.05em 0.35em;
-  border-radius: 0.28em;
-  -webkit-box-decoration-break: clone;
-  box-decoration-break: clone;
-}
-.story-text--boxed .story-text__line::after {
-  content: '\A';
-  white-space: pre;
 }
 .text-editor {
   position: fixed;
@@ -4133,6 +4100,159 @@ button.avatar {
   color: var(--text-2);
   font-size: 13px;
   overflow-wrap: anywhere;
+}
+
+/* ---------- camadas dos editores (textos e fotos por cima) ---------- */
+.layers {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  overflow: hidden;
+  pointer-events: none;
+  touch-action: none;
+}
+/* durante um gesto, o segundo dedo pode cair em qualquer lugar da foto */
+.layers.is-gesturing {
+  pointer-events: auto;
+}
+.layers--static,
+.layers--static .layer {
+  pointer-events: none;
+}
+.layer {
+  position: absolute;
+  pointer-events: auto;
+  touch-action: none;
+  cursor: move;
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+.layer.is-selected::before {
+  content: '';
+  position: absolute;
+  inset: -8px;
+  border: 1.5px dashed rgba(255, 255, 255, 0.85);
+  border-radius: 6px;
+  pointer-events: none;
+}
+.layer--photo img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  max-width: none;
+  object-fit: cover;
+  -webkit-user-drag: none;
+  pointer-events: none;
+}
+.layer--text {
+  width: max-content;
+  text-align: center;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  text-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+.layer--boxed {
+  text-shadow: none;
+}
+.layer__line {
+  display: inline;
+  background: var(--box-bg);
+  padding: 0.05em 0.35em;
+  border-radius: 0.28em;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+}
+.layer--boxed .layer__line::after {
+  content: '\A';
+  white-space: pre;
+}
+.layer__remove,
+.layer__handle {
+  position: absolute;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.4);
+  text-shadow: none;
+}
+.layer__remove {
+  top: -21px;
+  left: -21px;
+  background: #fff;
+  color: #111;
+}
+/* bolinha de girar e mudar o tamanho */
+.layer__handle {
+  right: -21px;
+  bottom: -21px;
+  background: var(--accent);
+  border: 3px solid #fff;
+  cursor: grab;
+  touch-action: none;
+}
+.story-editor__top,
+.story-editor__gallery,
+.story-sticker {
+  z-index: 3;
+}
+/* editor de texto: escolha da fonte */
+.text-editor__fonts {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px 2px 8px;
+}
+.text-editor__fonts::-webkit-scrollbar {
+  display: none;
+}
+.font-chip {
+  flex: none;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  background: rgba(255, 255, 255, 0.14);
+  color: #fff;
+  font-size: 15px;
+  white-space: nowrap;
+}
+.font-chip.is-on {
+  background: #fff;
+  color: #111;
+}
+/* editor de publicação: área exata da foto (as camadas ficam por cima) */
+.editor__canvas {
+  position: relative;
+  width: min(100%, calc(62dvh * var(--ar, 1)));
+}
+.editor__canvas .cropper {
+  width: 100%;
+}
+.editor__tools {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.editor__tool {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.6);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.editor__aspect {
+  z-index: 3;
 }
 
 /* ---------- melhores amigos ---------- */

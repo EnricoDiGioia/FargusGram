@@ -1,6 +1,8 @@
 // Processamento de imagens no próprio celular: redimensiona, recorta,
 // aplica filtro e comprime antes de enviar (economiza os 1 GB grátis).
 
+import { canvasFont, fontOf, loadFonts } from './fonts';
+
 export const POST_WIDTH = 1080;
 export const THUMB_WIDTH = 480;
 export const STORY_W = 1080;
@@ -180,7 +182,7 @@ function applyFilter(ctx, w, h, filterId) {
 // Recorte + filtro + compressão
 // crop = { sx, sy, sw, sh } em pixels da imagem de origem
 // ---------------------------------------------------------------------
-export async function renderCrop(img, crop, outW, outH, filterId = 'normal') {
+export async function renderCrop(img, crop, outW, outH, filterId = 'normal', layers = null) {
   const canvas = newCanvas(outW, outH);
   const ctx = canvas.getContext('2d');
   ctx.fillStyle = '#000';
@@ -188,6 +190,7 @@ export async function renderCrop(img, crop, outW, outH, filterId = 'normal') {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, canvas.width, canvas.height);
   applyFilter(ctx, canvas.width, canvas.height, filterId);
+  await drawLayers(ctx, layers, canvas.width, canvas.height); // textos e fotos por cima (sem filtro)
   const full = await canvasToBlob(canvas, 'image/jpeg', 0.85);
 
   // miniatura para as grades (perfil / explorar)
@@ -276,9 +279,92 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-// texts: [{ text, x, y (0..1 do centro), size (px no canvas 1080), color, boxed }]
+// ---------------------------------------------------------------------
+// Camadas por cima da imagem (story e publicação): textos e fotos
+//   x, y: centro (0..1 da largura/altura); rot: giro em radianos;
+//   scale: zoom da pinça; z: ordem (maior fica por cima)
+//   texto: size em px numa imagem de 1080 de largura; font: id em fonts.js
+//   foto: image = { img, width, height }; w = largura (fração da imagem)
+// ---------------------------------------------------------------------
+export const LAYER_REF_W = 1080;
+export const TEXT_WRAP = 0.84; // o texto quebra linha em 84% da largura
+
+export const layerOrder = (layers) => [...(layers || [])].sort((a, b) => (a.z || 0) - (b.z || 0));
+
+function drawTextLayer(ctx, l, W) {
+  const font = fontOf(l.font);
+  const size = l.size * (W / LAYER_REF_W);
+  const sc = l.scale || 1;
+  ctx.font = canvasFont(font, size);
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  const lines = wrapLines(ctx, font.upper ? l.text.toUpperCase() : l.text, W * TEXT_WRAP);
+  const lh = size * font.lh;
+  const top = -(lines.length * lh) / 2;
+  lines.forEach((line, i) => {
+    const y = top + lh * i + lh / 2;
+    if (l.boxed) {
+      const w = ctx.measureText(line).width + size * 0.7;
+      ctx.fillStyle = l.color === '#ffffff' ? 'rgba(0,0,0,0.78)' : '#ffffff';
+      roundRect(ctx, -w / 2, y - lh / 2, w, lh, size * 0.28);
+      ctx.fill();
+      ctx.fillStyle = l.color === '#ffffff' ? '#ffffff' : l.color;
+    } else {
+      ctx.fillStyle = l.color;
+      // a sombra não acompanha o zoom do canvas: ajusta na mão
+      ctx.shadowColor = 'rgba(0,0,0,0.45)';
+      ctx.shadowBlur = size * 0.18 * sc;
+      ctx.shadowOffsetY = size * 0.04 * sc;
+    }
+    ctx.fillText(line, 0, y);
+    ctx.shadowColor = 'transparent';
+    ctx.shadowBlur = 0;
+    ctx.shadowOffsetY = 0;
+  });
+}
+
+// cantos arredondados e sombra (iguais aos da tela)
+export const photoRadius = (w, h) => Math.min(w, h) * 0.04;
+
+function drawPhotoLayer(ctx, l, W) {
+  const w = l.w * W;
+  const h = w * (l.image.height / l.image.width);
+  const r = photoRadius(w, h);
+  const k = (W / LAYER_REF_W) * (l.scale || 1);
+  ctx.save();
+  ctx.shadowColor = 'rgba(0,0,0,0.35)';
+  ctx.shadowBlur = 24 * k;
+  ctx.shadowOffsetY = 6 * k;
+  roundRect(ctx, -w / 2, -h / 2, w, h, r);
+  ctx.fillStyle = '#000';
+  ctx.fill();
+  ctx.restore();
+  ctx.save();
+  roundRect(ctx, -w / 2, -h / 2, w, h, r);
+  ctx.clip();
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(l.image.img, -w / 2, -h / 2, w, h);
+  ctx.restore();
+}
+
+export async function drawLayers(ctx, layers, W, H) {
+  if (!layers?.length) return;
+  await loadFonts(layers.filter((l) => l.kind === 'text').map((l) => l.font));
+  for (const l of layerOrder(layers)) {
+    if (l.kind === 'text' && !l.text?.trim()) continue;
+    ctx.save();
+    ctx.translate(l.x * W, l.y * H);
+    ctx.rotate(l.rot || 0);
+    ctx.scale(l.scale || 1, l.scale || 1);
+    if (l.kind === 'photo') drawPhotoLayer(ctx, l, W);
+    else drawTextLayer(ctx, l, W);
+    ctx.restore();
+  }
+}
+
+// layers: textos e fotos (veja acima)
 // stickers: [{ canvas, x, y }] (adesivos já desenhados em pixels do story)
-export async function renderStory({ img, crop, gradient, filterId, texts, stickers }) {
+export async function renderStory({ img, crop, gradient, filterId, layers, stickers }) {
   const canvas = newCanvas(STORY_W, STORY_H);
   const ctx = canvas.getContext('2d');
   if (img && crop) {
@@ -296,40 +382,11 @@ export async function renderStory({ img, crop, gradient, filterId, texts, sticke
     ctx.fillRect(0, 0, STORY_W, STORY_H);
   }
 
+  await drawLayers(ctx, layers, STORY_W, STORY_H);
+
+  // adesivo da música por cima de tudo
   for (const st of stickers || []) {
     ctx.drawImage(st.canvas, Math.round(st.x * STORY_W - st.canvas.width / 2), Math.round(st.y * STORY_H - st.canvas.height / 2));
-  }
-
-  for (const t of texts || []) {
-    if (!t.text?.trim()) continue;
-    const size = t.size;
-    ctx.font = `700 ${size}px ${STORY_FONT}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    const lines = wrapLines(ctx, t.text, STORY_W * 0.84);
-    const lh = size * 1.25;
-    const cx = t.x * STORY_W;
-    const top = t.y * STORY_H - (lines.length * lh) / 2;
-    lines.forEach((line, i) => {
-      const y = top + lh * i + lh / 2;
-      if (t.boxed) {
-        const w = ctx.measureText(line).width + size * 0.7;
-        ctx.fillStyle = t.color === '#ffffff' ? 'rgba(0,0,0,0.78)' : '#ffffff';
-        roundRect(ctx, cx - w / 2, y - lh / 2, w, lh, size * 0.28);
-        ctx.fill();
-        ctx.fillStyle = t.color === '#ffffff' ? '#ffffff' : t.color;
-        ctx.shadowColor = 'transparent';
-      } else {
-        ctx.fillStyle = t.color;
-        ctx.shadowColor = 'rgba(0,0,0,0.45)';
-        ctx.shadowBlur = size * 0.18;
-        ctx.shadowOffsetY = size * 0.04;
-      }
-      ctx.fillText(line, cx, y);
-      ctx.shadowColor = 'transparent';
-      ctx.shadowBlur = 0;
-      ctx.shadowOffsetY = 0;
-    });
   }
 
   const blob = await canvasToBlob(canvas, 'image/jpeg', 0.86);

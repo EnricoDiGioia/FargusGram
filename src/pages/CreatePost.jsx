@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { ImagePlus, Plus, X, Crop, MapPin, UserPlus, Search, Check, ChevronLeft } from 'lucide-react';
+import { ImagePlus, Plus, X, Crop, MapPin, UserPlus, Search, Check, ChevronLeft, Type } from 'lucide-react';
 import { TopBar, CloseButton, IconButton, Spinner, Sheet, Handle, useConfirm, FullScreen } from '../components/ui';
 import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
 import MusicPicker, { MusicDetailsLine } from '../components/MusicPicker';
+import { LayerStage, TextEditor, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { FILTERS, filterCss, prepareImage, renderCrop, POST_WIDTH } from '../lib/media';
@@ -75,8 +76,12 @@ export default function CreatePost() {
   const toast = useToast();
   const confirm = useConfirm();
   const fileInput = useRef(null);
+  const photoInput = useRef(null);
   const [step, setStep] = useState('pick'); // pick | edit | details
-  const [items, setItems] = useState([]); // { image, crop, filter }
+  const [items, setItems] = useState([]); // { image, crop, filter, layers }
+  const [editing, setEditing] = useState(null); // texto aberto no editor
+  const [stageW, setStageW] = useState(360);
+  const canvasRef = useRef(null);
   const [current, setCurrent] = useState(0);
   const [aspectId, setAspectId] = useState('4:5');
   const [preparing, setPreparing] = useState(null);
@@ -90,7 +95,23 @@ export default function CreatePost() {
 
   const itemsRef = useRef(items);
   itemsRef.current = items;
-  useEffect(() => () => itemsRef.current.forEach((it) => URL.revokeObjectURL(it.image.url)), []);
+  useEffect(
+    () => () =>
+      itemsRef.current.forEach((it) => {
+        URL.revokeObjectURL(it.image.url);
+        revokeLayers(it.layers);
+      }),
+    []
+  );
+
+  // largura da foto na tela (tamanho do texto no editor)
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el) return undefined;
+    const ro = new ResizeObserver(() => setStageW(el.clientWidth));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [step]);
 
   const first = items[0]?.image;
   const aspectDef = ASPECTS.find((a) => a.id === aspectId);
@@ -105,7 +126,7 @@ export default function CreatePost() {
       setPreparing({ done: i, total: files.length });
       try {
         const image = await prepareImage(files[i], 1600);
-        added.push({ image, crop: defaultCrop(image), filter: 'normal' });
+        added.push({ image, crop: defaultCrop(image), filter: 'normal', layers: [] });
       } catch (err) {
         toast(err.message);
       }
@@ -120,6 +141,7 @@ export default function CreatePost() {
 
   const removeItem = (i) => {
     URL.revokeObjectURL(items[i].image.url);
+    revokeLayers(items[i].layers);
     const next = items.filter((_, j) => j !== i);
     setItems(next);
     setCurrent((c) => Math.max(0, Math.min(c, next.length - 1)));
@@ -127,6 +149,36 @@ export default function CreatePost() {
   };
 
   const setItem = (i, patch) => setItems((xs) => xs.map((it, j) => (j === i ? { ...it, ...patch } : it)));
+  const setLayers = (i, fn) => setItems((xs) => xs.map((it, j) => (j === i ? { ...it, layers: typeof fn === 'function' ? fn(it.layers) : fn } : it)));
+
+  // textos e fotos por cima da foto que está na tela
+  const addText = () => {
+    if (items[current].layers.filter((l) => l.kind === 'text').length >= MAX_TEXT_LAYERS) {
+      toast(`Dá para colocar até ${MAX_TEXT_LAYERS} textos em cada foto.`);
+      return;
+    }
+    setEditing({});
+  };
+  const doneText = (t) => {
+    setEditing(null);
+    const { text, color, boxed, size, font } = t;
+    if (!text.trim()) {
+      if (t.id) setLayers(current, (ls) => ls.filter((x) => x.id !== t.id));
+      return;
+    }
+    if (t.id) setLayers(current, (ls) => ls.map((x) => (x.id === t.id ? { ...x, text, color, boxed, size, font } : x)));
+    else setLayers(current, (ls) => [...ls, newTextLayer(ls, { text, color, boxed, size, font })]);
+  };
+  const pickPhotos = async (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!files.length) return;
+    const i = current;
+    setPreparing({ done: 0, total: files.length });
+    const added = await photoLayersFrom(files, itemsRef.current[i].layers, toast);
+    setPreparing(null);
+    setLayers(i, (ls) => [...ls, ...added]);
+  };
 
   const cancel = async () => {
     if (items.length) {
@@ -146,7 +198,7 @@ export default function CreatePost() {
       for (let i = 0; i < items.length; i++) {
         setPublishing({ done: i, total: items.length });
         const it = items[i];
-        const { full, thumb, width, height } = await renderCrop(it.image.img, cropRect(it.image, aspect, it.crop), outW, outH, it.filter);
+        const { full, thumb, width, height } = await renderCrop(it.image.img, cropRect(it.image, aspect, it.crop), outW, outH, it.filter, it.layers);
         const path = await api.uploadImage(uid, active.id, 'posts', full);
         uploaded.push(path);
         const thumbPath = await api.uploadImage(uid, active.id, 'posts', thumb);
@@ -208,14 +260,25 @@ export default function CreatePost() {
           />
           <div className="editor">
             <div className="editor__stage" style={{ '--ar': aspect }}>
-              <Cropper
-                key={current + ':' + aspectId}
-                image={cur.image}
-                aspect={aspect}
-                value={cur.crop}
-                onChange={(crop) => setItem(current, { crop })}
-                filter={filterCss(cur.filter)}
-              />
+              <div className="editor__canvas" ref={canvasRef}>
+                <Cropper
+                  key={current + ':' + aspectId}
+                  image={cur.image}
+                  aspect={aspect}
+                  value={cur.crop}
+                  onChange={(crop) => setItem(current, { crop })}
+                  filter={filterCss(cur.filter)}
+                />
+                <LayerStage key={current} layers={cur.layers} onChange={(ls) => setLayers(current, ls)} onEditText={setEditing} />
+              </div>
+              <div className="editor__tools">
+                <button type="button" className="editor__tool" onClick={addText} aria-label="Adicionar texto">
+                  <Type size={20} />
+                </button>
+                <button type="button" className="editor__tool" onClick={() => photoInput.current?.click()} aria-label="Colocar foto por cima" disabled={!!preparing}>
+                  <ImagePlus size={20} />
+                </button>
+              </div>
               <button
                 type="button"
                 className="editor__aspect"
@@ -262,7 +325,11 @@ export default function CreatePost() {
                 </button>
               ))}
             </div>
-            <p className="muted center small">Arraste para enquadrar · dois dedos para zoom</p>
+            <p className="muted center small">
+              {cur.layers.length
+                ? 'Toque no texto para editar · dois dedos (ou a bolinha) giram e mudam o tamanho'
+                : 'Arraste para enquadrar · dois dedos para zoom · Aa para escrever por cima'}
+            </p>
           </div>
         </>
       )}
@@ -286,6 +353,7 @@ export default function CreatePost() {
             <div className="details__row">
               <div className="details__preview" style={{ aspectRatio: String(aspect) }}>
                 <img src={items[0].image.url} alt="" style={{ filter: filterCss(items[0].filter) }} />
+                {items[0].layers.length > 0 && <LayerStage layers={items[0].layers} readOnly />}
                 {items.length > 1 && <span className="details__count">{items.length}</span>}
               </div>
               <textarea
@@ -319,6 +387,18 @@ export default function CreatePost() {
       )}
 
       <input ref={fileInput} type="file" accept="image/*" multiple hidden onChange={addFiles} />
+      <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={pickPhotos} />
+      {editing && step === 'edit' && cur && (
+        <TextEditor
+          initial={editing}
+          scale={stageW / POST_WIDTH}
+          onDone={doneText}
+          onDelete={() => {
+            setLayers(current, (ls) => ls.filter((x) => x.id !== editing.id));
+            setEditing(null);
+          }}
+        />
+      )}
 
       {publishing && (
         <div className="overlay-progress">

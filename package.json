@@ -10,6 +10,10 @@
     "preview": "vite preview"
   },
   "dependencies": {
+    "@fontsource/bebas-neue": "^5.3.0",
+    "@fontsource/pacifico": "^5.3.0",
+    "@fontsource/playfair-display": "^5.3.0",
+    "@fontsource/special-elite": "^5.3.0",
     "@fontsource/unbounded": "^5.3.0",
     "@supabase/supabase-js": "^2.117.2",
     "lucide-react": "^1.48.0",

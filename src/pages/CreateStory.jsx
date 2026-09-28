@@ -1,83 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks } from 'lucide-react';
+import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Cropper, { cropRect, defaultCrop } from '../components/Cropper';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
 import { CloseFriendsSheet } from '../components/CloseFriends';
+import { LayerStage, TextEditor, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
-import { prepareImage, renderStory, STORY_BACKGROUNDS, STORY_FONT, STORY_W } from '../lib/media';
+import { prepareImage, renderStory, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
 import { emit } from '../lib/events';
 import { pageCache } from '../lib/storage';
 import { clipOf, musicForDb, musicLabel, player } from '../lib/music';
 import { drawMusicSticker, loadArtwork, nextStickerStyle } from '../lib/musicSticker';
 import * as api from '../lib/api';
 
-const COLORS = ['#ffffff', '#000000', '#f43f5e', '#f97316', '#facc15', '#22c55e', '#06b6d4', '#8b5cf6', '#d946ef'];
 const ASPECT = 9 / 16;
 const EDITOR_MUSIC = 'story-editor';
-
-function TextEditor({ initial, onDone, onDelete, scale }) {
-  const [text, setText] = useState(initial.text || '');
-  const [color, setColor] = useState(initial.color || '#ffffff');
-  const [boxed, setBoxed] = useState(!!initial.boxed);
-  const [size, setSize] = useState(initial.size || 76);
-  const ref = useRef(null);
-  useEffect(() => {
-    setTimeout(() => ref.current?.focus(), 60);
-  }, []);
-  const style = {
-    color: boxed ? (color === '#ffffff' ? '#fff' : color) : color,
-    fontSize: size * scale,
-    background: boxed ? (color === '#ffffff' ? 'rgba(0,0,0,.78)' : '#fff') : 'transparent',
-    fontFamily: STORY_FONT,
-  };
-  return (
-    <div className="text-editor">
-      <div className="text-editor__top">
-        {initial.id ? (
-          <button type="button" className="icon-btn icon-btn--light" aria-label="Apagar texto" onClick={onDelete}>
-            <Trash2 size={22} />
-          </button>
-        ) : (
-          <span />
-        )}
-        <button type="button" className="text-editor__done" onClick={() => onDone({ ...initial, text, color, boxed, size })}>
-          Concluir
-        </button>
-      </div>
-      <div className="text-editor__body">
-        <input
-          type="range"
-          className="text-editor__size"
-          min={40}
-          max={150}
-          value={size}
-          onChange={(e) => setSize(Number(e.target.value))}
-          aria-label="Tamanho do texto"
-        />
-        <textarea ref={ref} value={text} onChange={(e) => setText(e.target.value)} placeholder="Digite…" rows={3} style={style} maxLength={220} />
-      </div>
-      <div className="text-editor__bottom">
-        <button type="button" className={`text-editor__box ${boxed ? 'is-on' : ''}`} onClick={() => setBoxed((b) => !b)} aria-label="Fundo no texto">
-          A
-        </button>
-        {COLORS.map((c) => (
-          <button
-            key={c}
-            type="button"
-            className={`swatch ${color === c ? 'is-on' : ''}`}
-            style={{ background: c }}
-            onClick={() => setColor(c)}
-            aria-label={`Cor ${c}`}
-          />
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export default function CreateStory() {
   const { active, uid, can } = useSession();
@@ -85,11 +25,12 @@ export default function CreateStory() {
   const toast = useToast();
   const confirm = useConfirm();
   const fileInput = useRef(null);
+  const photoInput = useRef(null);
   const frame = useRef(null);
   const [image, setImage] = useState(null);
   const [crop, setCrop] = useState(null);
   const [gi, setGi] = useState(0);
-  const [texts, setTexts] = useState([]);
+  const [layers, setLayers] = useState([]); // textos e fotos por cima (components/Layers)
   const [editing, setEditing] = useState(null);
   const [scale, setScale] = useState(0.35);
   const [busy, setBusy] = useState(false);
@@ -158,6 +99,28 @@ export default function CreateStory() {
   }, []);
 
   useEffect(() => () => image && URL.revokeObjectURL(image.url), [image]);
+  const layersRef = useRef(layers);
+  layersRef.current = layers;
+  useEffect(() => () => revokeLayers(layersRef.current), []);
+
+  // fotos por cima (colagem)
+  const pickPhotos = async (e) => {
+    const files = [...(e.target.files || [])];
+    e.target.value = '';
+    if (!files.length) return;
+    setBusy(true);
+    const added = await photoLayersFrom(files, layersRef.current, toast);
+    setLayers((ls) => [...ls, ...added]);
+    setBusy(false);
+  };
+
+  const addText = () => {
+    if (layers.filter((l) => l.kind === 'text').length >= MAX_TEXT_LAYERS) {
+      toast(`Dá para colocar até ${MAX_TEXT_LAYERS} textos.`);
+      return;
+    }
+    setEditing({});
+  };
 
   const pick = async (e) => {
     const file = e.target.files?.[0];
@@ -177,44 +140,39 @@ export default function CreateStory() {
 
   const doneText = (t) => {
     setEditing(null);
-    if (!t.text.trim()) {
-      if (t.id) setTexts((xs) => xs.filter((x) => x.id !== t.id));
+    const { text, color, boxed, size, font } = t;
+    if (!text.trim()) {
+      if (t.id) setLayers((ls) => ls.filter((x) => x.id !== t.id));
       return;
     }
-    if (t.id) setTexts((xs) => xs.map((x) => (x.id === t.id ? t : x)));
-    else setTexts((xs) => [...xs, { ...t, id: Date.now(), x: 0.5, y: 0.42 }]);
+    if (t.id) setLayers((ls) => ls.map((x) => (x.id === t.id ? { ...x, text, color, boxed, size, font } : x)));
+    else setLayers((ls) => [...ls, newTextLayer(ls, { text, color, boxed, size, font })]);
   };
 
-  // arrastar textos e o adesivo de música (id 'sticker')
-  const onTextDown = (e, t) => {
+  // arrastar o adesivo de música; tocar troca o estilo
+  const onStickerDown = (e) => {
     e.stopPropagation();
     e.currentTarget.setPointerCapture?.(e.pointerId);
-    drag.current = { id: t.id, sx: e.clientX, sy: e.clientY, x: t.x, y: t.y, moved: false };
+    drag.current = { sx: e.clientX, sy: e.clientY, x: sticker.x, y: sticker.y, moved: false };
   };
-  const onTextMove = (e) => {
+  const onStickerMove = (e) => {
     const d = drag.current;
     if (!d || !frame.current) return;
     const dx = e.clientX - d.sx;
     const dy = e.clientY - d.sy;
     if (Math.abs(dx) + Math.abs(dy) > 4) d.moved = true;
-    const w = frame.current.clientWidth;
-    const h = frame.current.clientHeight;
-    const x = Math.max(0.05, Math.min(0.95, d.x + dx / w));
-    const y = Math.max(0.04, Math.min(0.96, d.y + dy / h));
-    if (d.id === 'sticker') setSticker((st) => (st ? { ...st, x, y } : st));
-    else setTexts((xs) => xs.map((t) => (t.id === d.id ? { ...t, x, y } : t)));
+    const x = Math.max(0.05, Math.min(0.95, d.x + dx / frame.current.clientWidth));
+    const y = Math.max(0.04, Math.min(0.96, d.y + dy / frame.current.clientHeight));
+    setSticker((st) => (st ? { ...st, x, y } : st));
   };
-  const onTextUp = (t) => {
+  const onStickerUp = () => {
     const d = drag.current;
     drag.current = null;
-    if (!d || d.moved) return;
-    // toque no adesivo troca o estilo; toque no texto abre a edição
-    if (t.id === 'sticker') setSticker((st) => (st ? { ...st, style: nextStickerStyle(st.style) } : st));
-    else setEditing(t);
+    if (d && !d.moved) setSticker((st) => (st ? { ...st, style: nextStickerStyle(st.style) } : st));
   };
 
   const close = async () => {
-    if (image || texts.length || music) {
+    if (image || layers.length || music) {
       const ok = await confirm({ title: 'Descartar story?', confirmText: 'Descartar', danger: true });
       if (!ok) return;
     }
@@ -222,7 +180,7 @@ export default function CreateStory() {
   };
 
   const isEmpty = () => {
-    if (image || texts.length || music) return false;
+    if (image || layers.length || music) return false;
     toast('Escolha uma foto, escreva um texto ou coloque uma música');
     return true;
   };
@@ -259,7 +217,7 @@ export default function CreateStory() {
         img: image?.img,
         crop: image ? cropRect(image, ASPECT, crop) : null,
         gradient: STORY_BACKGROUNDS[gi],
-        texts,
+        layers,
         stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
       path = await api.uploadImage(uid, active.id, 'stories', blob);
@@ -298,12 +256,14 @@ export default function CreateStory() {
             type="button"
             className="story-editor__bg"
             style={{ background: `linear-gradient(160deg, ${a}, ${b})` }}
-            onClick={() => setEditing({})}
+            onClick={() => !layers.length && addText()}
             aria-label="Escrever texto"
           >
-            {!texts.length && <span>Toque para escrever</span>}
+            {!layers.length && <span>Toque para escrever</span>}
           </button>
         )}
+
+        <LayerStage layers={layers} onChange={setLayers} onEditText={setEditing} />
 
         {music && sticker && stickerImg && (
           <img
@@ -312,49 +272,23 @@ export default function CreateStory() {
             alt={`Música: ${musicLabel(music)}`}
             draggable="false"
             style={{ left: `${sticker.x * 100}%`, top: `${sticker.y * 100}%`, width: stickerImg.canvas.width * scale }}
-            onPointerDown={(e) => onTextDown(e, { id: 'sticker', ...sticker })}
-            onPointerMove={onTextMove}
-            onPointerUp={() => onTextUp({ id: 'sticker' })}
+            onPointerDown={onStickerDown}
+            onPointerMove={onStickerMove}
+            onPointerUp={onStickerUp}
             onPointerCancel={() => (drag.current = null)}
           />
         )}
-
-        {texts.map((t) => (
-          <div
-            key={t.id}
-            className={`story-text ${t.boxed ? 'story-text--boxed' : ''}`}
-            style={{
-              left: `${t.x * 100}%`,
-              top: `${t.y * 100}%`,
-              fontSize: t.size * scale,
-              color: t.boxed && t.color === '#ffffff' ? '#fff' : t.color,
-              '--box-bg': t.color === '#ffffff' ? 'rgba(0,0,0,.78)' : '#fff',
-              fontFamily: STORY_FONT,
-            }}
-            onPointerDown={(e) => onTextDown(e, t)}
-            onPointerMove={onTextMove}
-            onPointerUp={() => onTextUp(t)}
-            onPointerCancel={() => (drag.current = null)}
-          >
-            {t.boxed ? (
-              t.text.split('\n').map((line, i) => (
-                <span key={i} className="story-text__line">
-                  {line}
-                </span>
-              ))
-            ) : (
-              t.text
-            )}
-          </div>
-        ))}
 
         <div className="story-editor__top">
           <button type="button" className="icon-btn icon-btn--light" onClick={close} aria-label="Fechar">
             <X size={28} />
           </button>
           <div className="story-editor__tools">
-            <button type="button" className="icon-btn icon-btn--light" onClick={() => setEditing({})} aria-label="Adicionar texto">
+            <button type="button" className="icon-btn icon-btn--light" onClick={addText} aria-label="Adicionar texto">
               <Type size={26} />
+            </button>
+            <button type="button" className="icon-btn icon-btn--light" onClick={() => photoInput.current?.click()} aria-label="Colocar foto por cima" disabled={busy}>
+              <ImagePlus size={25} />
             </button>
             <button
               type="button"
@@ -421,6 +355,7 @@ export default function CreateStory() {
       />
 
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={pick} />
+      <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={pickPhotos} />
       <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music && { ...music, sticker }} onChange={chooseMusic} story />
       {editing && (
         <TextEditor
@@ -428,7 +363,7 @@ export default function CreateStory() {
           scale={scale}
           onDone={doneText}
           onDelete={() => {
-            setTexts((xs) => xs.filter((x) => x.id !== editing.id));
+            setLayers((ls) => ls.filter((x) => x.id !== editing.id));
             setEditing(null);
           }}
         />
