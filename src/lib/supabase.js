@@ -33,3 +33,12 @@ export function mediaUrl(path) {
   if (/^(blob:|data:|https?:)/.test(path)) return path;
   return PUBLIC_BASE + path.split('/').map(encodeURIComponent).join('/');
 }
+// o contrário: de volta ao caminho no bucket (null se não for do nosso bucket)
+export function mediaPath(url) {
+  if (typeof url !== 'string' || !url.startsWith(PUBLIC_BASE)) return null;
+  try {
+    return url.slice(PUBLIC_BASE.length).split('/').map(decodeURIComponent).join('/');
+  } catch {
+    return null;
+  }
+}

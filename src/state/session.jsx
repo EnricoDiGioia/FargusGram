@@ -3,6 +3,7 @@ import { supabase, isConfigured } from '../lib/supabase';
 import * as api from '../lib/api';
 import { local, pageCache } from '../lib/storage';
 import { pushLogout, setAppBadge } from '../lib/push';
+import { getAppearance, normalizeAppearance, saveAppearance } from '../lib/theme';
 
 const SessionContext = createContext(null);
 
@@ -51,6 +52,26 @@ export function SessionProvider({ children }) {
     refreshMe();
   }, [uid, session === undefined]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // tema guardado na conta vale em todos os aparelhos (quando o banco já tem)
+  const savedAppearance = me?.appearance;
+  useEffect(() => {
+    if (!savedAppearance?.active) return;
+    // (compara já normalizado: o banco guarda as chaves em outra ordem)
+    if (JSON.stringify(getAppearance()) !== JSON.stringify(normalizeAppearance(savedAppearance))) saveAppearance(savedAppearance);
+  }, [savedAppearance]);
+
+  // escolher/criar tema: aplica na hora, guarda no aparelho e na conta
+  const setAppearance = useCallback(
+    async (a) => {
+      const clean = saveAppearance(a);
+      if (!me?.id || !Array.isArray(me.features) || !me.features.includes('temas')) return clean;
+      setMe((m) => (m ? { ...m, appearance: clean } : m));
+      await api.saveAppearance(me.id, clean);
+      return clean;
+    },
+    [me?.id, me?.features]
+  );
+
   const characters = useMemo(() => me?.characters ?? [], [me]);
   const active = characters.find((c) => c.id === activeId) || characters[0] || null;
 
@@ -84,6 +105,7 @@ export function SessionProvider({ children }) {
     setActive,
     refreshMe,
     patchCharacter,
+    setAppearance,
     signOut,
     isMine: (characterId) => characters.some((c) => c.id === characterId),
     // recursos que dependem de atualização do banco ("destaques", "notas")

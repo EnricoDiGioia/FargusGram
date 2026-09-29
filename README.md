@@ -25,7 +25,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Melhores amigos: cada personagem monta a sua lista secreta e pode mandar stories e notas só para ela (anel verde)
 - Cada jogador pode ter vários personagens e alternar entre eles. O mestre usa isso para os NPCs.
 - Selo de verificado, dado pelo admin
-- Modo escuro
+- Temas: claro, escuro e 9 temas prontos com papel de parede, ou crie o seu com as suas cores, degradê, desenho ou foto de fundo
 - Cadastro só com código de convite
 - Painel do admin: trocar o convite, ver jogadores, redefinir senhas, dar selos, inflar os números de um perfil famoso e apagar qualquer publicação
 
@@ -134,6 +134,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-figurinhas.sql` | Figurinhas no Direct e nos comentários, e fotos nos comentários (rode depois da de reações) |
 | `2026-09-repost.sql` | Repostar o story em que você foi marcado (rode depois da de figurinhas) |
 | `2026-09-numeros-extras.sql` | Números extras (seguidores e curtidas) no Painel do admin (rode depois da de repost) |
+| `2026-09-temas.sql` | Temas guardados na conta, para valerem em todos os aparelhos (rode depois da de números extras) |
 
 ## Notificações no celular
 
@@ -250,6 +251,16 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 - **Destaques:** um story de Melhores amigos que estiver num destaque continua só para a lista. Se o destaque só tiver stories assim, quem está fora da lista nem vê o destaque.
 - Tirar alguém da lista vale na hora, inclusive para os stories e destaques antigos.
 
+## Temas
+
+Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, fundo e um papel de parede atrás das telas.
+
+- **Prontos:** Automático (segue o claro/escuro do celular), Claro, Escuro, e nove com papel de parede: Fissura, Oceano, Floresta, Noite estrelada e Brasa (escuros), Papel, Sakura, Pôr do sol e Menta (claros). Toque num para usar.
+- **Criar o seu:** toque em **Criar tema**. Escolha o nome, claro ou escuro, a cor de destaque (botões, links, curtidas), a cor do fundo e o papel de parede: **Degradê** (duas cores e a direção), **Desenho** (pontinhos, quadriculado, estrelas, ondas ou listras, na cor que quiser) ou **Foto** (uma foto sua). A barra **Quanto o papel de parede aparece** deixa ele mais forte ou mais suave, para os textos continuarem fáceis de ler. O app já muda enquanto você mexe; **Cancelar** volta ao tema de antes.
+- **Editar ou apagar:** toque no lápis ao lado do nome do tema. Cada jogador pode ter até 12 temas criados.
+- **Em todos os aparelhos:** o tema é do jogador (vale para todos os seus personagens) e fica guardado na conta, então aparece também no computador ou em outro celular. Sem a atualização `2026-09-temas.sql`, ele funciona do mesmo jeito, mas fica só no aparelho em que foi escolhido.
+- As cores que acompanham (fundo dos cartões, bordas, textos mais claros) são calculadas a partir das que você escolheu, e o texto dos botões fica branco ou preto conforme a cor de destaque, para dar sempre para ler.
+
 ## No dia a dia
 
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
@@ -264,7 +275,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 
 ## Limites do plano grátis
 
-- **Fotos:** o Supabase grátis tem 1 GB. Figurinhas e fotos dos comentários também contam, mas são pequenas. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
+- **Fotos:** o Supabase grátis tem 1 GB. Figurinhas, fotos dos comentários e fotos de papel de parede também contam, mas são pequenas (a foto de um tema apagado sai do bucket junto). O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
 - **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
 - **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.
@@ -299,6 +310,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 | `src/components/` | Peças reutilizadas pelas telas |
 | `src/lib/` | Conexão com o Supabase, processamento de imagens, música e utilidades |
 | `src/styles/app.css` | Visual (cores, claro e escuro) |
+| `src/lib/theme.js` | Temas prontos e as contas das cores de cada tema |
 | `public/` | Ícones, manifesto de instalação e service worker (cache) |
 | `.github/workflows/` | Publicação automática e robô contra a pausa |
 | `scripts/keepalive.mjs` | Consulta usada pelo robô |

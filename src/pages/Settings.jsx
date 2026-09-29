@@ -1,12 +1,12 @@
 import { lazy, Suspense, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Plus, Shield, LogOut, ChevronRight, Smartphone, Moon, KeyRound, UserRound, Star } from 'lucide-react';
+import { Plus, Shield, LogOut, ChevronRight, Smartphone, Moon, KeyRound, UserRound, Star, Palette } from 'lucide-react';
 import { TopBar, BackButton, Button, Handle } from '../components/ui';
 import Avatar from '../components/Avatar';
 import { InstallSteps } from '../components/InstallBanner';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
-import { getTheme, setTheme } from '../lib/theme';
+import { findTheme, getAppearance } from '../lib/theme';
 import * as api from '../lib/api';
 
 const PushSettings = lazy(() => import('../components/PushSettings'));
@@ -15,7 +15,8 @@ export default function Settings() {
   const { me, session, characters, active, setActive, isAdmin, signOut, refreshMe, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
-  const [theme, setThemeState] = useState(getTheme());
+  const appearance = getAppearance();
+  const themeName = findTheme(appearance.active, appearance).name;
   const [name, setName] = useState(me.display_name);
   const [pw, setPw] = useState('');
   const [busy, setBusy] = useState(null);
@@ -98,25 +99,16 @@ export default function Settings() {
         <h3 className="section-title">
           <Moon size={15} /> Aparência
         </h3>
-        <div className="segmented">
-          {[
-            ['auto', 'Automático'],
-            ['light', 'Claro'],
-            ['dark', 'Escuro'],
-          ].map(([v, l]) => (
-            <button
-              key={v}
-              type="button"
-              className={theme === v ? 'is-active' : ''}
-              onClick={() => {
-                setTheme(v);
-                setThemeState(v);
-              }}
-            >
-              {l}
-            </button>
-          ))}
-        </div>
+        <button type="button" className="settings-row" onClick={() => navigate('/temas')}>
+          <span className="settings-row__icon">
+            <Palette size={18} />
+          </span>
+          <span className="settings-row__label">
+            Temas
+            <span className="muted small">Agora: {themeName}</span>
+          </span>
+          <ChevronRight size={18} className="muted" />
+        </button>
       </section>
 
       <Suspense fallback={null}>

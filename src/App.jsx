@@ -40,6 +40,7 @@ const CreateStory = lazy(() => import('./pages/CreateStory'));
 const StoryViewer = lazy(() => import('./pages/StoryViewer'));
 const EditPost = lazy(() => import('./pages/EditPost'));
 const Admin = lazy(() => import('./pages/Admin'));
+const Themes = lazy(() => import('./pages/Themes'));
 const HighlightEditor = lazy(() => import('./pages/HighlightEditor'));
 
 // Avisa quando existe uma versão nova do app publicada
@@ -224,6 +225,7 @@ function AppRoutes() {
             <Route path="p/:id/curtidas" element={<Likers />} />
             <Route path="direct" element={<Inbox />} />
             <Route path="configuracoes" element={<Settings />} />
+            <Route path="temas" element={<Themes />} />
             <Route path="admin" element={<Admin />} />
             <Route path="editar-perfil" element={<EditProfile />} />
             <Route path="novo-personagem" element={<NewCharacter />} />

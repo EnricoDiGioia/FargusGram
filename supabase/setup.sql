@@ -353,6 +353,13 @@ alter table public.players drop constraint if exists players_push_prefs_ok;
 alter table public.players add constraint players_push_prefs_ok
   check (jsonb_typeof(push_prefs) = 'object' and pg_column_size(push_prefs) <= 4096);
 
+-- Tema do app de cada jogador (o escolhido e os que ele criou), para valer em
+-- todos os aparelhos dele
+alter table public.players add column if not exists appearance jsonb not null default '{}'::jsonb;
+alter table public.players drop constraint if exists players_appearance_ok;
+alter table public.players add constraint players_appearance_ok
+  check (jsonb_typeof(appearance) = 'object' and pg_column_size(appearance) <= 32768);
+
 -- Aparelhos que recebem notificações (um por celular ou navegador)
 create table if not exists public.push_subscriptions (
   id          bigint generated always as identity primary key,
@@ -2249,7 +2256,8 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'display_name', p.display_name,
     'is_admin', p.is_admin,
     'push_prefs', p.push_prefs,
-    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost', 'extras'),
+    'appearance', p.appearance,
+    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost', 'extras', 'temas'),
     'characters', coalesce((
       select jsonb_agg(public._char(c.id) || jsonb_build_object('bio', c.bio, 'created_at', c.created_at) order by c.created_at)
       from public.characters c where c.owner_id = p.id
@@ -2373,7 +2381,7 @@ revoke all on
 from anon, authenticated;
 
 grant select                on public.players              to authenticated;
-grant update (display_name, push_prefs) on public.players to authenticated;
+grant update (display_name, push_prefs, appearance) on public.players to authenticated;
 grant select, insert, delete on public.characters          to authenticated;
 grant update (handle, name, bio, avatar_path) on public.characters to authenticated;
 grant select, insert, delete on public.follows             to authenticated;

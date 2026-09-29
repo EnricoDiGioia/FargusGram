@@ -101,6 +101,10 @@ export const me = () => rpc('me');
 export async function updateDisplayName(playerId, name) {
   unwrap(await supabase.from('players').update({ display_name: name.trim() }).eq('id', playerId));
 }
+// tema do app (o escolhido e os criados), para valer em todos os aparelhos
+export async function saveAppearance(playerId, appearance) {
+  unwrap(await supabase.from('players').update({ appearance }).eq('id', playerId));
+}
 
 export async function createCharacter(ownerId, { handle, name, bio }) {
   return unwrap(
