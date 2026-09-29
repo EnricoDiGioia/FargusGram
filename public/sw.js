@@ -51,9 +51,11 @@ self.addEventListener('fetch', (event) => {
       (async () => {
         const cache = await caches.open(IMG_CACHE);
         const hit = await cache.match(req);
-        if (hit) return hit;
+        // foto guardada "opaca" (vinda de uma <img>) não serve para quem precisa
+        // ler a imagem (ex.: repostar um story): busca de novo e troca a guardada
+        if (hit && (hit.type !== 'opaque' || req.mode === 'no-cors')) return hit;
         const res = await fetch(req);
-        if (res.ok || res.type === 'opaque') {
+        if (res.ok || (res.type === 'opaque' && !hit)) {
           cache.put(req, res.clone()).then(trimImages).catch(() => {});
         }
         return res;

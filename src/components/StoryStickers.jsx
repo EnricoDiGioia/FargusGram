@@ -71,7 +71,7 @@ const pct = (n, total) => (total ? Math.round((n * 100) / total) : 0);
 // Desenho da figurinha. `interactive` só no visualizador (no editor tudo é
 // "div", para o toque ir para o gesto de mover).
 // state: { polls, mine, answered, is_owner, answers } (story_interactions)
-export function StickerFace({ s, k, state, interactive = false, onVote, onAsk, onMention }) {
+export function StickerFace({ s, k, state, interactive = false, onVote, onAsk, onMention, onRepost }) {
   const px = (v) => `${v * k}px`;
   const Tag = interactive ? 'button' : 'div';
   const btn = (fn) => (interactive ? { type: 'button', onClick: fn } : {});
@@ -147,6 +147,19 @@ export function StickerFace({ s, k, state, interactive = false, onVote, onAsk, o
     );
   }
 
+  // story repostado: área invisível em cima do cartão (o cartão já está na foto)
+  if (s.type === 'repost') {
+    const w = (s.w || 0.6) * 1080;
+    return (
+      <Tag
+        className="stk-repost"
+        style={{ width: px(w), height: px(w * (s.ar || 16 / 9)) }}
+        aria-label={`Story de @${s.handle}`}
+        {...btn(() => onRepost?.(s))}
+      />
+    );
+  }
+
   if (s.type === 'time') {
     const style = s.style || 'hora';
     return (
@@ -169,7 +182,7 @@ export function StickerFace({ s, k, state, interactive = false, onVote, onAsk, o
 
 // Figurinhas por cima da foto do story, no visualizador.
 // rect: área da foto na tela ({ left, top, width, height }, em px do container)
-export function StickerOverlay({ stickers, state, rect, onVote, onAsk, onMention }) {
+export function StickerOverlay({ stickers, state, rect, onVote, onAsk, onMention, onRepost }) {
   if (!rect || !stickers?.length) return null;
   const k = rect.width / 1080;
   const stop = (e) => e.stopPropagation();
@@ -178,7 +191,7 @@ export function StickerOverlay({ stickers, state, rect, onVote, onAsk, onMention
       {[...stickers]
         .sort((a, b) => (a.z || 0) - (b.z || 0))
         .map((s) => {
-          const touchable = s.type === 'poll' || s.type === 'question' || s.type === 'mention';
+          const touchable = s.type === 'poll' || s.type === 'question' || s.type === 'mention' || s.type === 'repost';
           return (
             <div
               key={s.id}
@@ -190,7 +203,7 @@ export function StickerOverlay({ stickers, state, rect, onVote, onAsk, onMention
               }}
               {...(touchable ? { onPointerDown: stop, onPointerUp: stop } : {})}
             >
-              <StickerFace s={s} k={k} state={state} interactive={touchable} onVote={onVote} onAsk={onAsk} onMention={onMention} />
+              <StickerFace s={s} k={k} state={state} interactive={touchable} onVote={onVote} onAsk={onAsk} onMention={onMention} onRepost={onRepost} />
             </div>
           );
         })}

@@ -12,6 +12,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Reações com emoji nos comentários, nas mensagens do Direct, nos stories e nos destaques; até 3 comentários fixados pelo dono do post
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
 - Figurinhas nos stories: enquete, caixinha de perguntas, menção, local e horário
+- Repostar o story em que você foi marcado ("Adicionar ao seu story")
 - Textos e fotos por cima, no story e na publicação: vários textos em 6 fontes e fotos coladas, que dá para arrastar, girar e mudar o tamanho
 - Destaques no perfil: stories guardados com nome e capa, que ficam no perfil para sempre
 - Música nos posts e nos stories: busca no catálogo do Apple Music, escolha do trecho de 15 segundos e adesivo da música no story
@@ -131,6 +132,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-interacoes.sql` | Reações e comentários fixados; figurinhas do story (rode depois da de melhores amigos) |
 | `2026-09-reacoes.sql` | Reações nos stories, nos destaques e nas mensagens do Direct (rode depois da de interações) |
 | `2026-09-figurinhas.sql` | Figurinhas no Direct e nos comentários, e fotos nos comentários (rode depois da de reações) |
+| `2026-09-repost.sql` | Repostar o story em que você foi marcado (rode depois da de figurinhas) |
 
 ## Notificações no celular
 
@@ -232,6 +234,8 @@ No editor de story, toque na figurinha (ícone de adesivo, do lado direito) e es
 - **Horário:** a hora em que você fez o story. Tocar nela troca para a data ou para as duas.
 
 As figurinhas se mexem como os textos: arraste, gire e mude o tamanho pelas alças. Tocar numa figurinha abre para editar (no horário, troca o estilo). Elas não ficam "pintadas" na foto: o app guarda cada uma e desenha por cima na hora de ver, para dar para tocar. Por isso não aparecem na capinha do destaque nem na miniatura do Direct.
+
+**Repostar quando te marcam:** quem é marcado (figurinha de menção) recebe o story no Direct com o botão **Adicionar ao seu story**, que também aparece embaixo do próprio story. Ele abre o editor com o story original num cartão, com o @ de quem fez no canto e o fundo nas cores dele. Dá para mexer no cartão como numa foto (mover, girar, mudar o tamanho) e colocar textos e figurinhas antes de publicar. Quem vê o repost pode tocar no cartão para ir aos stories ou ao perfil de quem fez o original, e quem fez recebe o aviso "compartilhou seu story". Stories de Melhores amigos não podem ser repostados, e o botão some quando o story sai do ar (24 horas).
 
 **Resultados:** no seu story, as enquetes já mostram as porcentagens e a caixinha mostra quantas respostas chegaram. Toque em **Visualizações** (ou na caixinha) para ver as respostas e quem votou em cada opção.
 

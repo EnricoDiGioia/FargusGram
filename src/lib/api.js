@@ -38,6 +38,8 @@ export function errorMessage(err) {
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
   )
     return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
+  if (code === 'PGRST202' && /story_for_repost/.test(msg))
+    return 'O banco ainda não tem a atualização de repostar stories. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-repost.sql no SQL Editor do Supabase (veja o README).';
   if (((code === 'PGRST205' || code === '42P01') && /stickers/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /media_kind|media_path/.test(msg)))
     return 'O banco ainda não tem a atualização de figurinhas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-figurinhas.sql no SQL Editor do Supabase (veja o README).';
   if (code === 'PGRST202' && /react_story|react_message|message_reactions_since/.test(msg))
@@ -281,6 +283,8 @@ export async function createStory({ character, path, thumbPath, width, height, m
   pokePush();
   return created;
 }
+// Repostar um story em que você foi marcado (só com o banco atualizado: repost)
+export const storyForRepost = (story, viewer) => rpc('story_for_repost', { p_story: story, p_viewer: viewer });
 // Figurinhas do story: estado das enquetes e caixinhas para quem está vendo
 export const storyInteractions = (story, viewer) => rpc('story_interactions', { p_story: story, p_viewer: viewer });
 export const storyVote = (story, sticker, character, option) =>

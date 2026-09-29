@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react';
-import { useNavigate } from 'react-router';
+import { useLocation, useNavigate } from 'react-router';
 import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus, Sticker } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
 import { CloseFriendsSheet } from '../components/CloseFriends';
 import { MAX_STICKERS, MentionPicker, StickerEditor, StickerPicker, newSticker, nextTimeStyle, stickersForDb, timeFields } from '../components/StoryStickers';
-import { LayerStage, TextEditor, newBaseLayer, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
+import { LayerStage, TextEditor, newBaseLayer, newRepostLayer, newTextLayer, photoLayersFrom, repostHotspots, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { photoColors, prepareImage, renderStory, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
@@ -15,6 +15,7 @@ import { pageCache } from '../lib/storage';
 import { clipOf, musicForDb, musicLabel, player } from '../lib/music';
 import { drawMusicSticker, loadArtwork, nextStickerStyle } from '../lib/musicSticker';
 import * as api from '../lib/api';
+import { mediaUrl } from '../lib/supabase';
 
 const ASPECT = 9 / 16;
 const EDITOR_MUSIC = 'story-editor';
@@ -127,6 +128,41 @@ export default function CreateStory() {
   // foto da galeria: entra inteira no quadro, atrás de tudo, e dá para mover,
   // girar e mudar o tamanho como as outras; o fundo pega as cores dela
   const base = layers.find((l) => l.base);
+  const repost = layers.find((l) => l.repost);
+  const photoForBg = base || repost;
+
+  // "Adicionar ao seu story" (story em que você foi marcado): entra como um
+  // cartão com o @ de quem fez, e o fundo pega as cores dele
+  const location = useLocation();
+  const repostId = location.state?.repost;
+  useEffect(() => {
+    if (!repostId || !can('repost')) return undefined;
+    let alive = true;
+    (async () => {
+      setBusy(true);
+      try {
+        const orig = await api.storyForRepost(repostId, active.id);
+        const res = await fetch(mediaUrl(orig.path));
+        if (!res.ok) throw new Error('Não consegui abrir o story.');
+        const img = await prepareImage(await res.blob(), 1600);
+        if (!alive) return URL.revokeObjectURL(img.url);
+        setLayers((ls) => (ls.some((l) => l.repost) ? ls : [...ls, newRepostLayer(ls, img, orig)]));
+        const colors = photoColors(img.img);
+        if (colors) {
+          setPhotoBg(colors);
+          setGi(-1);
+        }
+      } catch (err) {
+        if (alive) toast(api.errorMessage(err));
+      } finally {
+        if (alive) setBusy(false);
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [repostId]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const pick = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -154,10 +190,10 @@ export default function CreateStory() {
   const nextBackground = () =>
     setGi((g) => {
       const n = STORY_BACKGROUNDS.length;
-      if (base && photoBg) return g + 1 >= n ? -1 : g + 1;
+      if (photoForBg && photoBg) return g + 1 >= n ? -1 : g + 1;
       return (Math.max(0, g) + 1) % n;
     });
-  const bg = gi === -1 && base && photoBg ? photoBg : STORY_BACKGROUNDS[Math.max(0, gi)];
+  const bg = gi === -1 && photoForBg && photoBg ? photoBg : STORY_BACKGROUNDS[Math.max(0, gi)];
 
   const doneText = (t) => {
     setEditing(null);
@@ -273,7 +309,7 @@ export default function CreateStory() {
         layers,
         stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
-      const figurinhas = can('interacoes') ? stickersForDb(layers) : [];
+      const figurinhas = can('interacoes') ? [...stickersForDb(layers), ...(can('repost') ? repostHotspots(layers) : [])] : [];
       path = await api.uploadImage(uid, active.id, 'stories', blob);
       // miniatura só quando o banco já tem destaques (senão não há onde guardar)
       if (can('destaques')) thumbPath = await api.uploadImage(uid, active.id, 'stories', thumb);

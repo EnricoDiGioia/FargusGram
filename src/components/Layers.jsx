@@ -6,7 +6,7 @@ import '@fontsource/bebas-neue/latin-400.css';
 import '@fontsource/playfair-display/latin-700-italic.css';
 import { TEXT_FONTS, fontOf, cssFont } from '../lib/fonts';
 import { StickerFace } from './StoryStickers';
-import { LAYER_REF_W, TEXT_WRAP, photoRadius, prepareImage } from '../lib/media';
+import { LAYER_REF_W, TEXT_WRAP, STORY_FONT, layerRadius, repostBadge, prepareImage } from '../lib/media';
 
 // ---------------------------------------------------------------------
 // Camadas por cima da foto (story e publicação): textos e fotos.
@@ -131,6 +131,55 @@ const capture = (e) => {
 const PAD = 10; // folga da moldura em volta da camada
 const EDGE = 24; // as alças (e a área de toque delas) nunca saem do quadro
 const TIP_KEY = 'fg-layer-tip';
+
+// @ de quem fez o story repostado (mesmas medidas do desenho em lib/media.js)
+function RepostBadge({ handle, w }) {
+  const b = repostBadge(w);
+  return (
+    <span
+      className="layer__repost"
+      style={{ left: b.left, top: b.top, height: b.height, lineHeight: `${b.height}px`, fontSize: b.fontSize, padding: `0 ${b.padX}px`, borderRadius: b.height / 2, fontFamily: STORY_FONT }}
+    >
+      @{handle}
+    </span>
+  );
+}
+
+// Story em que você foi marcado, como um cartão (para repostar)
+export function newRepostLayer(layers, image, story) {
+  const ir = image.height / image.width;
+  const w = Math.min(0.66, (0.7 * (16 / 9)) / ir);
+  return {
+    id: newId(),
+    kind: 'photo',
+    image,
+    x: 0.5,
+    y: 0.47,
+    rot: 0,
+    scale: 1,
+    z: topZ(layers) + 1,
+    w,
+    repost: { story_id: story.id, character_id: story.character.id, handle: story.character.handle },
+  };
+}
+
+// posição do cartão repostado (para quem vê tocar e abrir o original)
+export function repostHotspots(layers) {
+  return layers
+    .filter((l) => l.repost)
+    .map((l) => ({
+      id: l.id,
+      type: 'repost',
+      x: +l.x.toFixed(4),
+      y: +l.y.toFixed(4),
+      rot: +(l.rot || 0).toFixed(4),
+      scale: +(l.scale || 1).toFixed(4),
+      z: 0,
+      w: +l.w.toFixed(4),
+      ar: +(l.image.height / l.image.width).toFixed(4),
+      ...l.repost,
+    }));
+}
 
 function TextLines({ l }) {
   if (!l.boxed) return l.text;
@@ -578,8 +627,9 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
                     src={l.image.url}
                     alt=""
                     draggable="false"
-                    style={l.base ? undefined : { borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
+                    style={l.base ? undefined : { borderRadius: layerRadius(l, w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
                   />
+                  {l.repost && <RepostBadge handle={l.repost.handle} w={w} />}
                 </div>
               );
             }

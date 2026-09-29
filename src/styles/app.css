@@ -5474,3 +5474,53 @@ img[data-fade][data-shown] {
 .sticker-maker__hint {
   color: rgba(255, 255, 255, 0.6);
 }
+
+/* ---------- story repostado ---------- */
+.layer__repost {
+  position: absolute;
+  z-index: 1;
+  white-space: nowrap;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  font-weight: 600;
+  pointer-events: none;
+}
+.stk-repost {
+  display: block;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+}
+.story-viewer__repost {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: calc(76px + var(--safe-bottom));
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.95);
+  color: #111;
+  font-weight: 700;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.3);
+  animation: pop-in 0.2s ease;
+}
+.msg__story-add {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  height: 34px;
+  padding: 0 14px;
+  border-radius: 17px;
+  background: var(--accent);
+  color: var(--on-accent);
+  font-weight: 700;
+  font-size: 13px;
+}

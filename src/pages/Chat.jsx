@@ -588,9 +588,16 @@ export default function Chat() {
                       <div className="msg__story msg__story-mention">
                         <span className="muted">{mine ? 'Você mencionou no seu story' : 'Mencionou você no story'}</span>
                         {m.story && !m.story.expired ? (
-                          <button type="button" className="msg__story-open" onClick={() => navigate(`/stories/${m.story.character_id}`)} aria-label="Ver o story">
-                            <img src={mediaUrl(m.story.thumb_path || m.story.path)} alt="" loading="lazy" />
-                          </button>
+                          <>
+                            <button type="button" className="msg__story-open" onClick={() => navigate(`/stories/${m.story.character_id}`)} aria-label="Ver o story">
+                              <img src={mediaUrl(m.story.thumb_path || m.story.path)} alt="" loading="lazy" />
+                            </button>
+                            {!mine && can('repost') && m.story.audience !== 'close_friends' && (
+                              <button type="button" className="msg__story-add" onClick={() => navigate('/criar/story', { state: { repost: m.story.id } })}>
+                                Adicionar ao seu story
+                              </button>
+                            )}
+                          </>
                         ) : (
                           <span className="muted small">O story não está mais disponível.</span>
                         )}

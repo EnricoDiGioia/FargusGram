@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
-import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX, Pencil, MinusCircle } from 'lucide-react';
+import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX, Pencil, MinusCircle, PlusCircle, User, Film } from 'lucide-react';
 import { Spinner, Sheet, SheetItem, Handle, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import CharacterRow from '../components/CharacterRow';
@@ -103,6 +103,7 @@ export default function StoryViewer({ mode = 'stories' }) {
   const [sendingAnswer, setSendingAnswer] = useState(false);
   const [rect, setRect] = useState(null); // onde a foto está na tela (as figurinhas vão por cima)
   const [replyFocus, setReplyFocus] = useState(false);
+  const [repostOf, setRepostOf] = useState(null); // cartão de story repostado que foi tocado
   const [burst, setBurst] = useState(null); // emoji subindo depois de reagir
   const replyInput = useRef(null);
   const media = useRef(null);
@@ -296,7 +297,7 @@ export default function StoryViewer({ mode = 'stories' }) {
 
   // música do story: já carrega junto com a foto, toca quando a foto aparece
   // e pausa quando segura o dedo ou abre um menu
-  const audioHeld = paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !loaded;
+  const audioHeld = paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !!repostOf || !loaded;
   useEffect(() => {
     if (!music || !musicKey) return;
     player.request(musicKey, clipOf(music), { held: audioHeld });
@@ -317,7 +318,7 @@ export default function StoryViewer({ mode = 'stories' }) {
 
   // barra de progresso
   const holding =
-    paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
+    paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !!repostOf || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
   useEffect(() => {
     if (!story) return;
     let raf;
@@ -385,6 +386,9 @@ export default function StoryViewer({ mode = 'stories' }) {
     return () => clearTimeout(t);
   }, [burst]);
   const myReaction = st?.my_reaction || null;
+  // você foi marcado neste story: dá para colocar no seu (como no Instagram)
+  const canRepost =
+    can('repost') && !own && !hl && story && story.audience !== 'close_friends' && (st?.stickers || []).some((x) => x.type === 'mention' && x.character_id === active.id);
   const ownReactions = own && st?.reactions?.length ? st.reactions : null;
 
   const sendReply = async (body) => {
@@ -499,6 +503,7 @@ export default function StoryViewer({ mode = 'stories' }) {
                 onVote={vote}
                 onAsk={ask}
                 onMention={(sk) => navigate(`/u/${sk.handle}`, { replace: true })}
+                onRepost={(sk) => setRepostOf(sk)}
               />
             )}
             {!loaded && (
@@ -625,6 +630,15 @@ export default function StoryViewer({ mode = 'stories' }) {
             )}
           </div>
 
+          {canRepost && !replyFocus && (
+            <button
+              type="button"
+              className="story-viewer__repost"
+              onClick={() => navigate('/criar/story', { state: { repost: story.id } })}
+            >
+              <PlusCircle size={18} /> Adicionar ao seu story
+            </button>
+          )}
           {canReact && !own && replyFocus && !reply.trim() && (
             <div className="story-quick" role="group" aria-label="Reações rápidas">
               <span className="story-quick__title">Reações rápidas</span>
@@ -661,6 +675,18 @@ export default function StoryViewer({ mode = 'stories' }) {
       )}
 
       <MusicInfoSheet music={music} open={musicInfo} onClose={() => setMusicInfo(false)} />
+      <Sheet open={!!repostOf} onClose={() => setRepostOf(null)} title={repostOf ? `Story de @${repostOf.handle}` : ''}>
+        {repostOf && (
+          <>
+            <SheetItem icon={<Film size={22} />} onClick={() => navigate(`/stories/${repostOf.character_id}`, { replace: true })}>
+              Ver stories de @{repostOf.handle}
+            </SheetItem>
+            <SheetItem icon={<User size={22} />} onClick={() => navigate(`/u/${repostOf.handle}`, { replace: true })}>
+              Ver perfil
+            </SheetItem>
+          </>
+        )}
+      </Sheet>
       <Sheet open={!!asking} onClose={() => setAsking(null)} title="Responder">
         {asking && (
           <form className="stk-answer" onSubmit={sendAnswer}>

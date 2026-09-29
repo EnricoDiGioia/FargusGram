@@ -348,6 +348,28 @@ function drawTextLayer(ctx, l, W) {
 
 // cantos arredondados e sombra (iguais aos da tela)
 export const photoRadius = (w, h) => Math.min(w, h) * 0.04;
+// story repostado: cartão mais arredondado, com o @ de quem fez no canto
+export const layerRadius = (l, w, h) => (l.repost ? Math.min(w, h) * 0.07 : photoRadius(w, h));
+export function repostBadge(w) {
+  return { left: w * 0.05, top: w * 0.05, height: w * 0.085, fontSize: w * 0.042, padX: w * 0.035 };
+}
+function drawRepostBadge(ctx, l, w, h) {
+  const b = repostBadge(w);
+  ctx.save();
+  ctx.font = `600 ${b.fontSize}px ${STORY_FONT}`;
+  const text = `@${l.repost.handle}`;
+  const bw = ctx.measureText(text).width + b.padX * 2;
+  const x = -w / 2 + b.left;
+  const y = -h / 2 + b.top;
+  roundRect(ctx, x, y, bw, b.height, b.height / 2);
+  ctx.fillStyle = 'rgba(0,0,0,0.55)';
+  ctx.fill();
+  ctx.fillStyle = '#fff';
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, x + b.padX, y + b.height / 2);
+  ctx.restore();
+}
 
 function drawPhotoLayer(ctx, l, W) {
   const w = l.w * W;
@@ -358,7 +380,7 @@ function drawPhotoLayer(ctx, l, W) {
     ctx.drawImage(l.image.img, -w / 2, -h / 2, w, h);
     return;
   }
-  const r = photoRadius(w, h);
+  const r = layerRadius(l, w, h);
   const k = (W / LAYER_REF_W) * (l.scale || 1);
   ctx.save();
   ctx.shadowColor = 'rgba(0,0,0,0.35)';
@@ -374,6 +396,7 @@ function drawPhotoLayer(ctx, l, W) {
   ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(l.image.img, -w / 2, -h / 2, w, h);
   ctx.restore();
+  if (l.repost) drawRepostBadge(ctx, l, w, h);
 }
 
 export async function drawLayers(ctx, layers, W, H) {
