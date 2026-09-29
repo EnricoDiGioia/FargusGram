@@ -38,6 +38,8 @@ export function errorMessage(err) {
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
   )
     return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
+  if ((code === 'PGRST202' && /react_comment|pin_comment|story_vote|story_answer|story_interactions/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /stickers/.test(msg)))
+    return 'O banco ainda não tem a atualização de reações e figurinhas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-interacoes.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /create_post/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /music/.test(msg)))
     return 'O banco ainda não tem a atualização de música. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-musica.sql no SQL Editor do Supabase (veja o README).';
   return msg || 'Algo deu errado.';
@@ -225,6 +227,12 @@ export async function likeComment(comment, character) {
 export async function unlikeComment(comment, character) {
   unwrap(await supabase.from('comment_likes').delete().eq('comment_id', comment).eq('character_id', character));
 }
+// reação com emoji (null tira) e comentários fixados: só com o banco atualizado (interacoes)
+export async function reactComment(comment, character, emoji) {
+  await rpc('react_comment', { p_comment: comment, p_character: character, p_emoji: emoji });
+  if (emoji) pokePush();
+}
+export const pinComment = (comment, pin) => rpc('pin_comment', { p_comment: comment, p_pin: pin });
 
 // ---------------------------------------------------------------------
 // Stories
@@ -234,14 +242,23 @@ export const characterStories = (character, viewer) =>
   rpc('character_stories', { p_character: character, p_viewer: viewer });
 export const storyViewers = (story) => rpc('story_viewers', { p_story: story });
 
-export async function createStory({ character, path, thumbPath, width, height, music, audience }) {
+export async function createStory({ character, path, thumbPath, width, height, music, audience, stickers }) {
   const row = { character_id: character, path, width, height };
+  if (stickers?.length) row.stickers = stickers; // só com o banco atualizado (interacoes)
   if (thumbPath) row.thumb_path = thumbPath; // só com o banco atualizado (destaques)
   if (audience === 'close_friends') row.audience = 'close_friends'; // só com melhores amigos
   if (music) row.music = music;
   const created = unwrap(await supabase.from('stories').insert(row).select('id').single());
   pokePush();
   return created;
+}
+// Figurinhas do story: estado das enquetes e caixinhas para quem está vendo
+export const storyInteractions = (story, viewer) => rpc('story_interactions', { p_story: story, p_viewer: viewer });
+export const storyVote = (story, sticker, character, option) =>
+  rpc('story_vote', { p_story: story, p_sticker: sticker, p_character: character, p_option: option });
+export async function storyAnswer(story, sticker, character, body) {
+  await rpc('story_answer', { p_story: story, p_sticker: sticker, p_character: character, p_body: body });
+  pokePush();
 }
 export async function markStorySeen(story, character) {
   await supabase

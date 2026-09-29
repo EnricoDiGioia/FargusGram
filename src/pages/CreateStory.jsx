@@ -1,10 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus } from 'lucide-react';
+import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus, Sticker } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
 import { CloseFriendsSheet } from '../components/CloseFriends';
+import { MAX_STICKERS, MentionPicker, StickerEditor, StickerPicker, newSticker, nextTimeStyle, stickersForDb, timeFields } from '../components/StoryStickers';
 import { LayerStage, TextEditor, newBaseLayer, newTextLayer, photoLayersFrom, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
@@ -31,6 +32,9 @@ export default function CreateStory() {
   // textos e fotos (components/Layers); a foto da galeria é a camada `base`
   const [layers, setLayers] = useState([]);
   const [editing, setEditing] = useState(null);
+  const [stickerMenu, setStickerMenu] = useState(false);
+  const [stickerEdit, setStickerEdit] = useState(null); // enquete, perguntas ou local sendo escrito
+  const [mentionFor, setMentionFor] = useState(undefined); // undefined: fechado; null: nova; id: trocar
   const [scale, setScale] = useState(0.35);
   const [busy, setBusy] = useState(false);
   const [music, setMusic] = useState(null);
@@ -166,6 +170,40 @@ export default function CreateStory() {
     else setLayers((ls) => [...ls, newTextLayer(ls, { text, color, boxed, size, font })]);
   };
 
+  // figurinhas (enquete, perguntas, menção, local, horário)
+  const pickSticker = (type) => {
+    setStickerMenu(false);
+    if (layers.filter((l) => l.kind === 'sticker').length >= MAX_STICKERS) {
+      toast(`Dá para colocar até ${MAX_STICKERS} figurinhas.`);
+      return;
+    }
+    if (type === 'time') setLayers((ls) => [...ls, newSticker(ls, 'time', timeFields())]);
+    else if (type === 'mention') setMentionFor(null);
+    else setStickerEdit({ type });
+  };
+  const doneSticker = (st) => {
+    setStickerEdit(null);
+    if (st.id) setLayers((ls) => ls.map((l) => (l.id === st.id ? { ...l, ...st } : l)));
+    else {
+      const { type, ...fields } = st;
+      setLayers((ls) => [...ls, newSticker(ls, type, fields)]);
+    }
+  };
+  const pickMention = (c) => {
+    const id = mentionFor;
+    setMentionFor(undefined);
+    const fields = { character_id: c.id, handle: c.handle };
+    if (id) setLayers((ls) => ls.map((l) => (l.id === id ? { ...l, ...fields } : l)));
+    else setLayers((ls) => [...ls, newSticker(ls, 'mention', fields)]);
+  };
+  // tocar numa camada: texto abre o editor; figurinha abre o dela (horário troca o estilo)
+  const editLayer = (l) => {
+    if (l.kind !== 'sticker') return setEditing(l);
+    if (l.type === 'time') setLayers((ls) => ls.map((x) => (x.id === l.id ? { ...x, style: nextTimeStyle(x.style) } : x)));
+    else if (l.type === 'mention') setMentionFor(l.id);
+    else setStickerEdit(l);
+  };
+
   // arrastar o adesivo de música; tocar troca o estilo
   const onStickerDown = (e) => {
     e.stopPropagation();
@@ -235,6 +273,7 @@ export default function CreateStory() {
         layers,
         stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
       });
+      const figurinhas = can('interacoes') ? stickersForDb(layers) : [];
       path = await api.uploadImage(uid, active.id, 'stories', blob);
       // miniatura só quando o banco já tem destaques (senão não há onde guardar)
       if (can('destaques')) thumbPath = await api.uploadImage(uid, active.id, 'stories', thumb);
@@ -246,6 +285,7 @@ export default function CreateStory() {
         height,
         music: music ? musicForDb(music, { sticker: sticker ? { x: sticker.x, y: sticker.y, style: sticker.style } : null }) : null,
         audience,
+        stickers: figurinhas,
       });
       player.release(EDITOR_MUSIC);
       pageCache.delete(`tray:${active.id}`);
@@ -262,7 +302,7 @@ export default function CreateStory() {
   const [a, b] = bg;
 
   return (
-    <FullScreen className={`story-editor ${editing ? 'is-editing' : ''}`}>
+    <FullScreen className={`story-editor ${editing || stickerEdit ? 'is-editing' : ''}`}>
       <div className="story-editor__frame" ref={frame}>
         <button
           type="button"
@@ -275,7 +315,7 @@ export default function CreateStory() {
           {!layers.length && <span>Toque para escrever</span>}
         </button>
 
-        <LayerStage layers={layers} onChange={setLayers} onEditText={setEditing} avoid=".story-editor__top > *, .story-editor__gallery" />
+        <LayerStage layers={layers} onChange={setLayers} onEditText={editLayer} avoid=".story-editor__top > *, .story-editor__gallery" />
 
         {music && sticker && stickerImg && (
           <img
@@ -302,6 +342,11 @@ export default function CreateStory() {
             <button type="button" className="icon-btn icon-btn--light" onClick={() => photoInput.current?.click()} aria-label="Colocar foto por cima" disabled={busy}>
               <ImagePlus size={25} />
             </button>
+            {can('interacoes') && (
+              <button type="button" className="icon-btn icon-btn--light" onClick={() => setStickerMenu(true)} aria-label="Figurinhas">
+                <Sticker size={25} />
+              </button>
+            )}
             <button
               type="button"
               className={`icon-btn icon-btn--light ${music ? 'is-on' : ''}`}
@@ -367,6 +412,19 @@ export default function CreateStory() {
       <input ref={fileInput} type="file" accept="image/*" hidden onChange={pick} />
       <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={pickPhotos} />
       <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music && { ...music, sticker }} onChange={chooseMusic} story />
+      <StickerPicker open={stickerMenu} onClose={() => setStickerMenu(false)} onPick={pickSticker} />
+      <MentionPicker open={mentionFor !== undefined} onClose={() => setMentionFor(undefined)} onPick={pickMention} viewer={active.id} />
+      {stickerEdit && (
+        <StickerEditor
+          initial={stickerEdit}
+          onDone={doneSticker}
+          onCancel={() => setStickerEdit(null)}
+          onDelete={() => {
+            setLayers((ls) => ls.filter((x) => x.id !== stickerEdit.id));
+            setStickerEdit(null);
+          }}
+        />
+      )}
       {editing && (
         <TextEditor
           initial={editing}

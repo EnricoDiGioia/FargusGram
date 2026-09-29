@@ -8,7 +8,9 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 
 - Feed com publicações de até 10 fotos, com recorte e filtros
 - Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
+- Reações com emoji nos comentários e até 3 comentários fixados pelo dono do post
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
+- Figurinhas nos stories: enquete, caixinha de perguntas, menção, local e horário
 - Textos e fotos por cima, no story e na publicação: vários textos em 6 fontes e fotos coladas, que dá para arrastar, girar e mudar o tamanho
 - Destaques no perfil: stories guardados com nome e capa, que ficam no perfil para sempre
 - Música nos posts e nos stories: busca no catálogo do Apple Music, escolha do trecho de 15 segundos e adesivo da música no story
@@ -125,6 +127,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-respostas.sql` | Responder uma mensagem específica no Direct (rode depois da de notificações) |
 | `2026-09-destaques-notas.sql` | Destaques no perfil e notas no Direct (rode depois das anteriores) |
 | `2026-09-melhores-amigos.sql` | Melhores amigos (rode depois da de destaques e notas) |
+| `2026-09-interacoes.sql` | Reações e comentários fixados; figurinhas do story (rode depois da de melhores amigos) |
 
 ## Notificações no celular
 
@@ -196,6 +199,25 @@ Os dois editores, o de story e o de publicação, têm as mesmas ferramentas:
 
 A imagem publicada sai exatamente como aparece no editor. As fontes vêm junto com o app (umas 130 KB, baixadas só quando alguém abre um editor), então funcionam em qualquer celular e ficam gravadas na foto: quem vê não precisa ter a fonte.
 
+## Reações e comentários fixados
+
+- **Reagir a um comentário:** o coração continua ali do lado. Para outro emoji (😂 😮 😢 🔥 👏), segure o dedo no comentário ou toque em **Reagir**. Cada personagem tem uma reação por comentário; tocar de novo no seu emoji tira. Embaixo do comentário aparecem os emojis mais usados e o total, e quem escreveu recebe o aviso "reagiu com 😂 ao seu comentário".
+- **Fixar:** o dono da publicação vê **Fixar** embaixo de cada comentário. Os fixados (até 3) ficam no topo com "Fixado pelo autor". **Desafixar** volta o comentário para o lugar dele. Respostas não podem ser fixadas.
+
+## Figurinhas no story
+
+No editor de story, toque na figurinha (ícone de adesivo, do lado direito) e escolha:
+
+- **Enquete:** uma pergunta (opcional) e de 2 a 4 opções. Quem vê toca numa opção para votar e aí vê as porcentagens. O voto não pode ser trocado.
+- **Perguntas:** a caixinha "Me faça uma pergunta" (dá para mudar o texto). Quem vê toca nela, escreve e envia. Só o dono do story vê as respostas, e recebe um aviso no celular a cada uma.
+- **Menção:** escolha um personagem. O story chega no Direct dele ("Mencionou você no story") e, no story, tocar na menção abre o perfil. Num story de Melhores amigos, só quem está na lista recebe a menção.
+- **Local:** qualquer nome de lugar, inclusive os do mundo da campanha.
+- **Horário:** a hora em que você fez o story. Tocar nela troca para a data ou para as duas.
+
+As figurinhas se mexem como os textos: arraste, gire e mude o tamanho pelas alças. Tocar numa figurinha abre para editar (no horário, troca o estilo). Elas não ficam "pintadas" na foto: o app guarda cada uma e desenha por cima na hora de ver, para dar para tocar. Por isso não aparecem na capinha do destaque nem na miniatura do Direct.
+
+**Resultados:** no seu story, as enquetes já mostram as porcentagens e a caixinha mostra quantas respostas chegaram. Toque em **Visualizações** (ou na caixinha) para ver as respostas e quem votou em cada opção.
+
 ## Melhores amigos
 
 Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem está nela. Quem entra ou sai da lista não recebe aviso nenhum: só passa a ver (ou deixa de ver) o que for marcado como Melhores amigos.
@@ -231,6 +253,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 - Publicações, perfis, comentários e mensagens só aparecem para quem entrou com o código de convite.
 - As fotos ficam num bucket público do Supabase. O endereço de cada foto é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
 - Os e-mails dos jogadores só aparecem para os admins.
+- Respostas das caixinhas de perguntas e quem votou em cada opção das enquetes só o dono do story vê. Os outros veem só as porcentagens, e só depois de votar.
 - Stories e notas de **Melhores amigos** só chegam a quem está na lista: o próprio banco esconde, não só a tela. A lista em si é secreta, só o dono vê. (A foto do story continua no bucket público: quem estiver na lista e copiar o endereço da imagem consegue repassar.)
 - As notificações no celular passam pelos servidores de push do Google, da Apple ou da Mozilla (depende do celular), mas vão criptografadas: só o aparelho de quem recebe consegue ler o texto.
 

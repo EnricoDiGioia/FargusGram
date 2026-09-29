@@ -5,6 +5,7 @@ import '@fontsource/pacifico/latin-400.css';
 import '@fontsource/bebas-neue/latin-400.css';
 import '@fontsource/playfair-display/latin-700-italic.css';
 import { TEXT_FONTS, fontOf, cssFont } from '../lib/fonts';
+import { StickerFace } from './StoryStickers';
 import { LAYER_REF_W, TEXT_WRAP, photoRadius, prepareImage } from '../lib/media';
 
 // ---------------------------------------------------------------------
@@ -116,7 +117,7 @@ function snap(a) {
   for (const t of [-Math.PI, -Math.PI / 2, 0, Math.PI / 2, Math.PI]) if (Math.abs(r - t) < 0.05) r = t;
   return r;
 }
-const scaleLimits = (l) => (l.kind === 'photo' ? [0.15, 4] : [0.3, 5]);
+const scaleLimits = (l) => (l.kind === 'photo' ? [0.15, 4] : l.kind === 'sticker' ? [0.3, 3] : [0.3, 5]);
 const isHandle = (mode) => mode === 'rotate' || mode === 'resize';
 // sem try, um navegador que recusa a captura interromperia o gesto
 const capture = (e) => {
@@ -439,7 +440,7 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
     // toque rápido no texto: abre para editar
     if (!G.moved && G.mode === 'move' && Date.now() - G.t0 < 450) {
       const l = layersRef.current.find((x) => x.id === G.id);
-      if (l?.kind === 'text' && onEditText) {
+      if ((l?.kind === 'text' || l?.kind === 'sticker') && onEditText) {
         setSel(null);
         onEditText(l);
       }
@@ -499,7 +500,7 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
         corners.current = { id: cur.id, pick };
       }
       const { pick } = corners.current;
-      const what = cur.kind === 'photo' ? ['a foto', 'da foto'] : ['o texto', 'do texto'];
+      const what = cur.kind === 'photo' ? ['a foto', 'da foto'] : cur.kind === 'sticker' ? ['a figurinha', 'da figurinha'] : ['o texto', 'do texto'];
       controls = (
         <>
           <div className="layer-frame" style={{ left: cx, top: cy, width: hw * 2, height: hh * 2, transform: turn }} />
@@ -508,7 +509,7 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
             className="layer-ctl layer-ctl--remove"
             data-layer={cur.id}
             style={{ ...spots[pick.remove], transform: 'translate(-50%, -50%)' }}
-            aria-label={cur.kind === 'photo' ? 'Tirar foto' : 'Apagar texto'}
+            aria-label={cur.kind === 'photo' ? 'Tirar foto' : cur.kind === 'sticker' ? 'Tirar figurinha' : 'Apagar texto'}
             onPointerDown={(e) => e.stopPropagation()}
             onClick={() => remove(cur.id)}
           >
@@ -579,6 +580,14 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
                     draggable="false"
                     style={l.base ? undefined : { borderRadius: photoRadius(w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
                   />
+                </div>
+              );
+            }
+            // figurinhas ficam sempre por cima (no story publicado também)
+            if (l.kind === 'sticker') {
+              return (
+                <div key={l.id} {...common} className={`layer layer--sticker ${selected ? 'is-selected' : ''}`} style={{ ...place, zIndex: 1000 + (l.z || 0) }}>
+                  <StickerFace s={l} k={k} />
                 </div>
               );
             }

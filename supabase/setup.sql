@@ -172,7 +172,7 @@ create table if not exists public.messages (
   id              uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   sender_id       uuid not null references public.characters (id) on delete cascade,
-  kind            text not null default 'text' check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply')),
+  kind            text not null default 'text' check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention')),
   body            text check (body is null or char_length(body) <= 2000),
   media_path      text,
   media_width     int,
@@ -264,13 +264,30 @@ alter table public.notes add constraint notes_audience_check check (audience in 
 alter table public.messages add column if not exists note_body text;
 alter table public.messages drop constraint if exists messages_kind_check;
 alter table public.messages add constraint messages_kind_check
-  check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply'));
+  check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention'));
 alter table public.messages drop constraint if exists messages_note_body_ok;
 alter table public.messages add constraint messages_note_body_ok
   check (note_body is null or char_length(note_body) <= 200);
 alter table public.messages drop constraint if exists messages_note_reply_ok;
 alter table public.messages add constraint messages_note_reply_ok
   check (kind <> 'note_reply' or (coalesce(char_length(body), 0) > 0 and note_body is not null));
+
+-- Reações nos comentários: a curtida (❤️) ganhou outros emojis, um por pessoa
+alter table public.comment_likes add column if not exists emoji text not null default '❤️';
+alter table public.comment_likes drop constraint if exists comment_likes_emoji_check;
+alter table public.comment_likes add constraint comment_likes_emoji_check
+  check (emoji in ('❤️', '😂', '😮', '😢', '🔥', '👏'));
+
+-- Comentários fixados pelo dono da publicação (até 3, aparecem primeiro)
+alter table public.comments add column if not exists pinned_at timestamptz;
+
+-- Figurinhas do story (enquete, caixinha de perguntas, menção, local e
+-- horário): ficam por cima da foto, guardadas como dados, para dar para
+-- tocar nelas
+alter table public.stories add column if not exists stickers jsonb;
+alter table public.stories drop constraint if exists stories_stickers_ok;
+alter table public.stories add constraint stories_stickers_ok
+  check (stickers is null or (jsonb_typeof(stickers) = 'array' and jsonb_array_length(stickers) <= 12 and pg_column_size(stickers) <= 16384));
 
 -- Notificações no celular (push)
 -- (para quem instalou antes de setembro/2026, esta linha adiciona a coluna)
@@ -1001,6 +1018,7 @@ declare
   v_kind  text;
   v_text  text;
   v_url   text;
+  v_emoji text;
 begin
   select * into v_to from public.characters c where c.id = new.recipient_id;
   select * into v_from from public.characters c where c.id = new.actor_id;
@@ -1010,6 +1028,9 @@ begin
   end if;
   if new.comment_id is not null then
     select public._push_snippet(cm.body, 90) into v_quote from public.comments cm where cm.id = new.comment_id;
+  end if;
+  if new.type = 'comment_like' then
+    select l.emoji into v_emoji from public.comment_likes l where l.comment_id = new.comment_id and l.character_id = new.actor_id;
   end if;
   v_kind := case new.type
     when 'like' then 'like'
@@ -1021,7 +1042,8 @@ begin
   end;
   v_text := v_from.handle || ' ' || case new.type
     when 'like' then 'curtiu sua publicação.'
-    when 'comment_like' then 'curtiu seu comentário: ' || coalesce(v_quote, '')
+    when 'comment_like' then case when coalesce(v_emoji, '❤️') = '❤️' then 'curtiu seu comentário: '
+                                  else 'reagiu com ' || v_emoji || ' ao seu comentário: ' end || coalesce(v_quote, '')
     when 'comment' then 'comentou: ' || coalesce(v_quote, '')
     when 'reply' then 'respondeu ao seu comentário: ' || coalesce(v_quote, '')
     when 'follow' then 'começou a seguir você.'
@@ -1074,6 +1096,7 @@ begin
     when 'post' then 'compartilhou uma publicação.'
     when 'story_reply' then 'respondeu ao seu story: ' || public._push_snippet(new.body, 120)
     when 'note_reply' then 'respondeu à sua nota: ' || public._push_snippet(new.body, 120)
+    when 'story_mention' then 'mencionou você no story.'
     else public._push_snippet(new.body, 160)
   end;
   v_text := v_from.handle || v_where || case when new.kind = 'text' then ': ' else ' ' end || v_text;
@@ -1654,7 +1677,13 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'created_at', c.created_at,
     'character', public._char(c.character_id),
     'like_count', (select count(*) from public.comment_likes l where l.comment_id = c.id),
-    'liked', exists (select 1 from public.comment_likes l where l.comment_id = c.id and l.character_id = p_viewer)
+    'liked', exists (select 1 from public.comment_likes l where l.comment_id = c.id and l.character_id = p_viewer),
+    'my_reaction', (select l.emoji from public.comment_likes l where l.comment_id = c.id and l.character_id = p_viewer),
+    'reactions', (
+      select coalesce(jsonb_agg(e.emoji order by e.n desc, e.emoji), '[]'::jsonb)
+      from (select l.emoji, count(*) as n from public.comment_likes l where l.comment_id = c.id group by l.emoji) e
+    ),
+    'pinned_at', c.pinned_at
   ) order by c.created_at), '[]'::jsonb)
   from public.comments c
   where c.post_id = p_post;
@@ -2135,7 +2164,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'display_name', p.display_name,
     'is_admin', p.is_admin,
     'push_prefs', p.push_prefs,
-    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos'),
+    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes'),
     'characters', coalesce((
       select jsonb_agg(public._char(c.id) || jsonb_build_object('bio', c.bio, 'created_at', c.created_at) order by c.created_at)
       from public.characters c where c.owner_id = p.id
@@ -2349,6 +2378,264 @@ create policy fargus_media_delete on storage.objects for delete to authenticated
     and ((storage.foldername(name))[1] = (select auth.uid()::text) or (select public.is_admin()))
     and not public.media_in_highlight(name)
   );
+
+
+-- ---------------------------------------------------------------------
+-- 9b. Interações: reações e comentários fixados; figurinhas do story
+--     (enquete, caixinha de perguntas, menção, local e horário)
+-- ---------------------------------------------------------------------
+
+-- Votos das enquetes (um por personagem em cada enquete)
+create table if not exists public.story_poll_votes (
+  story_id     uuid not null references public.stories (id) on delete cascade,
+  sticker_id   text not null check (char_length(sticker_id) between 1 and 40),
+  character_id uuid not null references public.characters (id) on delete cascade,
+  option       smallint not null check (option between 0 and 3),
+  created_at   timestamptz not null default now(),
+  primary key (story_id, sticker_id, character_id)
+);
+
+-- Respostas das caixinhas de perguntas (só o dono do story vê)
+create table if not exists public.story_answers (
+  id           uuid primary key default gen_random_uuid(),
+  story_id     uuid not null references public.stories (id) on delete cascade,
+  sticker_id   text not null check (char_length(sticker_id) between 1 and 40),
+  character_id uuid not null references public.characters (id) on delete cascade,
+  body         text not null check (char_length(body) between 1 and 300),
+  created_at   timestamptz not null default now()
+);
+create index if not exists story_answers_story_idx on public.story_answers (story_id, created_at);
+
+-- as duas tabelas só são lidas e escritas pelas funções abaixo
+alter table public.story_poll_votes enable row level security;
+alter table public.story_answers    enable row level security;
+revoke all on public.story_poll_votes, public.story_answers from anon, authenticated;
+grant all on public.story_poll_votes, public.story_answers to service_role;
+
+-- Reagir a um comentário (p_emoji nulo tira a reação)
+create or replace function public.react_comment(p_comment uuid, p_character uuid, p_emoji text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.owns_character(p_character) then
+    raise exception 'Personagem inválido';
+  end if;
+  if p_emoji is null then
+    delete from public.comment_likes l where l.comment_id = p_comment and l.character_id = p_character;
+  else
+    insert into public.comment_likes (comment_id, character_id, emoji)
+    values (p_comment, p_character, p_emoji)
+    on conflict (comment_id, character_id) do update set emoji = excluded.emoji;
+  end if;
+end $$;
+
+-- Fixar ou soltar um comentário (só quem é dono da publicação)
+create or replace function public.pin_comment(p_comment uuid, p_pin boolean)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_post   uuid;
+  v_owner  uuid;
+  v_parent uuid;
+begin
+  select c.post_id, p.character_id, c.parent_id into v_post, v_owner, v_parent
+  from public.comments c join public.posts p on p.id = c.post_id
+  where c.id = p_comment;
+  if v_post is null then
+    raise exception 'Comentário não encontrado';
+  end if;
+  if not public.owns_character(v_owner) then
+    raise exception 'Só o dono da publicação pode fixar comentários';
+  end if;
+  if p_pin then
+    if v_parent is not null then
+      raise exception 'Só dá para fixar comentários, não respostas';
+    end if;
+    if (select count(*) from public.comments c where c.post_id = v_post and c.pinned_at is not null and c.id <> p_comment) >= 3 then
+      raise exception 'Dá para fixar até 3 comentários';
+    end if;
+    update public.comments set pinned_at = coalesce(pinned_at, now()) where id = p_comment;
+  else
+    update public.comments set pinned_at = null where id = p_comment;
+  end if;
+end $$;
+
+-- O personagem pode ver este story? (mesma regra da bandeja, do arquivo e dos destaques)
+create or replace function public._story_open(p_story uuid, p_viewer uuid)
+returns boolean language sql stable security definer set search_path = '' as $$
+  select exists (
+    select 1 from public.stories s
+    where s.id = p_story
+      and public.owns_character(p_viewer)
+      and public.visible_to(s.character_id, s.audience, p_viewer)
+      and (s.expires_at > now() or public.owns_character(s.character_id)
+           or exists (select 1 from public.highlight_items hi where hi.story_id = s.id))
+  );
+$$;
+
+-- Votar numa enquete (não dá para mudar o voto, como no Instagram)
+create or replace function public.story_vote(p_story uuid, p_sticker text, p_character uuid, p_option int)
+returns void language plpgsql security definer set search_path = '' as $$
+declare
+  v_options int;
+begin
+  if not public._story_open(p_story, p_character) then
+    raise exception 'Story não encontrado';
+  end if;
+  select jsonb_array_length(x -> 'options') into v_options
+  from public.stories s, jsonb_array_elements(coalesce(s.stickers, '[]'::jsonb)) x
+  where s.id = p_story and x ->> 'id' = p_sticker and x ->> 'type' = 'poll';
+  if v_options is null or p_option < 0 or p_option >= v_options then
+    raise exception 'Enquete não encontrada';
+  end if;
+  insert into public.story_poll_votes (story_id, sticker_id, character_id, option)
+  values (p_story, p_sticker, p_character, p_option)
+  on conflict do nothing;
+end $$;
+
+-- Responder uma caixinha de perguntas
+create or replace function public.story_answer(p_story uuid, p_sticker text, p_character uuid, p_body text)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not public._story_open(p_story, p_character) then
+    raise exception 'Story não encontrado';
+  end if;
+  if not exists (
+    select 1 from public.stories s, jsonb_array_elements(coalesce(s.stickers, '[]'::jsonb)) x
+    where s.id = p_story and x ->> 'id' = p_sticker and x ->> 'type' = 'question'
+  ) then
+    raise exception 'Caixinha não encontrada';
+  end if;
+  if (select count(*) from public.story_answers a where a.story_id = p_story and a.character_id = p_character) >= 20 then
+    raise exception 'Respostas demais neste story';
+  end if;
+  insert into public.story_answers (story_id, sticker_id, character_id, body)
+  values (p_story, p_sticker, p_character, trim(p_body));
+end $$;
+
+-- Figurinhas de um story e o estado delas para quem está vendo:
+-- contagem das enquetes, em que opção votou e quais caixinhas já respondeu.
+-- O dono vê também quem votou em quê e as respostas.
+create or replace function public.story_interactions(p_story uuid, p_viewer uuid)
+returns jsonb language plpgsql stable security definer set search_path = '' as $$
+declare
+  s       public.stories;
+  v_owner boolean;
+begin
+  if not public._story_open(p_story, p_viewer) then
+    return null;
+  end if;
+  select * into s from public.stories where id = p_story;
+  v_owner := public.owns_character(s.character_id);
+  return jsonb_build_object(
+    'stickers', coalesce(s.stickers, '[]'::jsonb),
+    'polls', coalesce((
+      select jsonb_object_agg(v.sticker_id, jsonb_build_object(
+        'counts', v.counts,
+        'mine', (select pv.option from public.story_poll_votes pv
+                 where pv.story_id = p_story and pv.sticker_id = v.sticker_id and pv.character_id = p_viewer)
+      ))
+      from (
+        select pv.sticker_id, jsonb_build_array(
+          count(*) filter (where pv.option = 0), count(*) filter (where pv.option = 1),
+          count(*) filter (where pv.option = 2), count(*) filter (where pv.option = 3)
+        ) as counts
+        from public.story_poll_votes pv where pv.story_id = p_story
+        group by pv.sticker_id
+      ) v
+    ), '{}'::jsonb),
+    'mine', coalesce((
+      select jsonb_object_agg(pv.sticker_id, pv.option)
+      from public.story_poll_votes pv where pv.story_id = p_story and pv.character_id = p_viewer
+    ), '{}'::jsonb),
+    'answered', coalesce((
+      select jsonb_agg(distinct a.sticker_id)
+      from public.story_answers a where a.story_id = p_story and a.character_id = p_viewer
+    ), '[]'::jsonb),
+    'is_owner', v_owner,
+    'votes', case when v_owner then coalesce((
+      select jsonb_agg(jsonb_build_object('sticker_id', pv.sticker_id, 'option', pv.option, 'character', public._char(pv.character_id))
+                       order by pv.created_at desc)
+      from public.story_poll_votes pv where pv.story_id = p_story
+    ), '[]'::jsonb) end,
+    'answers', case when v_owner then coalesce((
+      select jsonb_agg(jsonb_build_object('id', a.id, 'sticker_id', a.sticker_id, 'body', a.body, 'created_at', a.created_at,
+                                          'character', public._char(a.character_id))
+                       order by a.created_at desc)
+      from public.story_answers a where a.story_id = p_story
+    ), '[]'::jsonb) end
+  );
+end $$;
+
+-- Aviso no celular: alguém respondeu sua caixinha
+create or replace function public.tg_story_answer_push()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  v_to   public.characters;
+  v_from public.characters;
+begin
+  select c.* into v_to from public.stories s join public.characters c on c.id = s.character_id where s.id = new.story_id;
+  select * into v_from from public.characters c where c.id = new.character_id;
+  if v_to.id is null or v_from.id is null or v_to.owner_id = v_from.owner_id then
+    return new;
+  end if;
+  perform public._push_enqueue(
+    v_to.owner_id, v_to.id, 'comment', v_to.handle,
+    v_from.handle || ' respondeu sua caixinha de perguntas: ' || public._push_snippet(new.body, 120),
+    '#/stories/' || v_to.id, null
+  );
+  return new;
+exception when others then
+  return new;
+end $$;
+drop trigger if exists story_answers_push on public.story_answers;
+create trigger story_answers_push after insert on public.story_answers
+  for each row execute function public.tg_story_answer_push();
+
+-- Menção no story: manda o story no Direct de quem foi mencionado
+-- (só para quem pode ver o story; os de "Melhores amigos" só para a lista)
+create or replace function public.tg_story_mentions()
+returns trigger language plpgsql security definer set search_path = '' as $$
+declare
+  r      record;
+  v_conv uuid;
+begin
+  if new.stickers is null then
+    return new;
+  end if;
+  for r in
+    select distinct c.id
+    from jsonb_array_elements(new.stickers) x
+    join public.characters c on c.id::text = x ->> 'character_id'
+    where x ->> 'type' = 'mention' and c.id <> new.character_id
+    limit 10
+  loop
+    continue when not public.visible_to(new.character_id, new.audience, r.id);
+    v_conv := public.start_conversation(new.character_id, array[r.id]);
+    insert into public.messages (conversation_id, sender_id, kind, story_id)
+    values (v_conv, new.character_id, 'story_mention', new.id);
+  end loop;
+  return new;
+exception when others then
+  return new; -- a menção nunca pode impedir o story de ser publicado
+end $$;
+drop trigger if exists stories_mentions on public.stories;
+create trigger stories_mentions after insert on public.stories
+  for each row execute function public.tg_story_mentions();
+
+revoke execute on function
+  public.react_comment(uuid, uuid, text), public.pin_comment(uuid, boolean), public._story_open(uuid, uuid),
+  public.story_vote(uuid, text, uuid, int), public.story_answer(uuid, text, uuid, text),
+  public.story_interactions(uuid, uuid), public.tg_story_answer_push(), public.tg_story_mentions()
+from public, anon, authenticated;
+grant execute on function
+  public.react_comment(uuid, uuid, text), public.pin_comment(uuid, boolean), public._story_open(uuid, uuid),
+  public.story_vote(uuid, text, uuid, int), public.story_answer(uuid, text, uuid, text),
+  public.story_interactions(uuid, uuid), public.tg_story_answer_push(), public.tg_story_mentions()
+to service_role;
+grant execute on function
+  public.react_comment(uuid, uuid, text), public.pin_comment(uuid, boolean),
+  public.story_vote(uuid, text, uuid, int), public.story_answer(uuid, text, uuid, text),
+  public.story_interactions(uuid, uuid)
+to authenticated;
 
 
 -- ---------------------------------------------------------------------

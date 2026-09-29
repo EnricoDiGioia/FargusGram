@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router';
 import { X, MoreHorizontal, Heart, Send, Eye, Trash2, VolumeX, Pencil, MinusCircle } from 'lucide-react';
 import { Spinner, Sheet, SheetItem, Handle, useConfirm } from '../components/ui';
@@ -7,6 +7,7 @@ import CharacterRow from '../components/CharacterRow';
 import { MusicInfoSheet, MusicLine, SoundButton } from '../components/Music';
 import { AddToHighlightSheet, HighlightCover } from '../components/Highlights';
 import { CloseBadge } from '../components/CloseFriends';
+import { StickerOverlay } from '../components/StoryStickers';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { mediaUrl } from '../lib/supabase';
@@ -17,6 +18,59 @@ import { cleanMusic, clipOf, player, usePlayer } from '../lib/music';
 import * as api from '../lib/api';
 
 const DURATION = 5500;
+
+// Para o dono: respostas das caixinhas e votos das enquetes
+function StoryResults({ st }) {
+  const stickers = st.stickers || [];
+  const polls = stickers.filter((s) => s.type === 'poll');
+  const questions = stickers.filter((s) => s.type === 'question');
+  if (!polls.length && !questions.length) return null;
+  return (
+    <div className="story-results">
+      {questions.map((q) => {
+        const answers = (st.answers || []).filter((a) => a.sticker_id === q.id);
+        return (
+          <div key={q.id}>
+            <h4 className="story-results__title">Respostas · {q.prompt}</h4>
+            {answers.length === 0 && <p className="muted small">Ninguém respondeu ainda.</p>}
+            {answers.map((a) => (
+              <div key={a.id} className="story-results__answer">
+                <Avatar character={a.character} size={32} />
+                <div>
+                  <strong>{a.character.handle}</strong>
+                  <span>{a.body}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })}
+      {polls.map((p) => {
+        const votes = (st.votes || []).filter((v) => v.sticker_id === p.id);
+        return (
+          <div key={p.id}>
+            <h4 className="story-results__title">Enquete{p.question ? ` · ${p.question}` : ''}</h4>
+            {p.options.map((o, i) => {
+              const who = votes.filter((v) => v.option === i);
+              return (
+                <div key={i}>
+                  <div className="story-results__opt">
+                    <span>{o}</span>
+                    <span>{who.length}</span>
+                  </div>
+                  <div className="story-results__voters">
+                    {who.length ? who.map((v) => <span key={v.character.id}>@{v.character.handle}</span>) : <span>—</span>}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })}
+      <h4 className="story-results__title">Visto por</h4>
+    </div>
+  );
+}
 
 // mode "stories": os stories de 24 h (fila = personagens da bandeja)
 // mode "highlight": um destaque do perfil (fila = destaques daquele perfil)
@@ -41,6 +95,13 @@ export default function StoryViewer({ mode = 'stories' }) {
   const [musicInfo, setMusicInfo] = useState(false);
   const [highlightSheet, setHighlightSheet] = useState(false);
   const [audioGiveUp, setAudioGiveUp] = useState(false);
+  const [inter, setInter] = useState({}); // figurinhas de cada story (enquetes, caixinhas…)
+  const [asking, setAsking] = useState(null); // caixinha sendo respondida
+  const [answer, setAnswer] = useState('');
+  const [sendingAnswer, setSendingAnswer] = useState(false);
+  const [rect, setRect] = useState(null); // onde a foto está na tela (as figurinhas vão por cima)
+  const media = useRef(null);
+  const imgRef = useRef(null);
   const ps = usePlayer();
   const bar = useRef(null);
   const elapsed = useRef(0);
@@ -49,6 +110,8 @@ export default function StoryViewer({ mode = 'stories' }) {
 
   const cid = order[ci];
   const story = group?.stories?.[si];
+  const withStickers = can('interacoes');
+  const st = story ? inter[story.id] : null;
   const loaded = !!story && loadedId === story.id;
   const own = group && isMine(group.character.id);
   const storyMusic = story?.music;
@@ -138,9 +201,96 @@ export default function StoryViewer({ mode = 'stories' }) {
     elapsed.current = 0;
   }, [story?.id]);
 
+  // figurinhas: estado das enquetes e caixinhas (deste story e do próximo)
+  const loadInter = useCallback(
+    async (id) => {
+      try {
+        const r = await api.storyInteractions(id, active.id);
+        setInter((m) => ({ ...m, [id]: r || { stickers: [] } }));
+        return r;
+      } catch {
+        setInter((m) => ({ ...m, [id]: m[id] || { stickers: [] } }));
+        return null;
+      }
+    },
+    [active.id]
+  );
+  useEffect(() => {
+    if (!withStickers || !story) return;
+    if (!inter[story.id]) loadInter(story.id);
+    const n = group?.stories?.[si + 1];
+    if (n && !inter[n.id]) loadInter(n.id);
+  }, [story?.id, withStickers]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // área da foto na tela (object-fit: contain ou cover)
+  useLayoutEffect(() => {
+    const box = media.current;
+    if (!box || !story) return undefined;
+    const measure = () => {
+      const img = imgRef.current;
+      if (!img) return;
+      const b = box.getBoundingClientRect();
+      const r = img.getBoundingClientRect();
+      const W = story.width || 1080;
+      const H = story.height || 1920;
+      const cover = getComputedStyle(img).objectFit === 'cover';
+      const sc = cover ? Math.max(r.width / W, r.height / H) : Math.min(r.width / W, r.height / H);
+      const w = W * sc;
+      const h = H * sc;
+      const next = { left: r.left - b.left + (r.width - w) / 2, top: r.top - b.top + (r.height - h) / 2, width: w, height: h };
+      setRect((p) => (p && Math.abs(p.left - next.left) < 0.5 && Math.abs(p.top - next.top) < 0.5 && Math.abs(p.width - next.width) < 0.5 ? p : next));
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(box);
+    return () => ro.disconnect();
+  }, [story?.id, story?.width, story?.height, !!group]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const vote = async (sk, option) => {
+    if (!story) return;
+    const id = story.id;
+    setInter((m) => {
+      const cur = m[id] || {};
+      const counts = [...(cur.polls?.[sk.id]?.counts || [0, 0, 0, 0])];
+      counts[option] += 1;
+      return { ...m, [id]: { ...cur, polls: { ...cur.polls, [sk.id]: { counts, mine: option } }, mine: { ...cur.mine, [sk.id]: option } } };
+    });
+    try {
+      await api.storyVote(id, sk.id, active.id, option);
+      loadInter(id);
+    } catch (err) {
+      loadInter(id);
+      toast(api.errorMessage(err));
+    }
+  };
+  const ask = (sk) => {
+    if (st?.is_owner) return openViewers();
+    setAnswer('');
+    setAsking(sk);
+  };
+  const sendAnswer = async (e) => {
+    e?.preventDefault();
+    const text = answer.trim();
+    if (!text || !asking || sendingAnswer) return;
+    setSendingAnswer(true);
+    try {
+      await api.storyAnswer(story.id, asking.id, active.id, text);
+      setInter((m) => {
+        const cur = m[story.id] || {};
+        return { ...m, [story.id]: { ...cur, answered: [...(cur.answered || []), asking.id] } };
+      });
+      setAsking(null);
+      toast('Resposta enviada');
+    } catch (err) {
+      toast(api.errorMessage(err));
+    } finally {
+      setSendingAnswer(false);
+    }
+  };
+
   // música do story: já carrega junto com a foto, toca quando a foto aparece
   // e pausa quando segura o dedo ou abre um menu
-  const audioHeld = paused || menu || !!viewers || musicInfo || highlightSheet || !loaded;
+  const audioHeld = paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !loaded;
   useEffect(() => {
     if (!music || !musicKey) return;
     player.request(musicKey, clipOf(music), { held: audioHeld });
@@ -161,7 +311,7 @@ export default function StoryViewer({ mode = 'stories' }) {
 
   // barra de progresso
   const holding =
-    paused || menu || !!viewers || musicInfo || highlightSheet || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
+    paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
   useEffect(() => {
     if (!story) return;
     let raf;
@@ -286,6 +436,7 @@ export default function StoryViewer({ mode = 'stories' }) {
 
   const openViewers = async () => {
     setViewers([]);
+    if (withStickers && story) loadInter(story.id);
     try {
       setViewers((await api.storyViewers(story.id)) || []);
     } catch {
@@ -302,8 +453,25 @@ export default function StoryViewer({ mode = 'stories' }) {
       )}
       {group && story && (
         <>
-          <div className="story-viewer__media" onPointerDown={onPointerDown} onPointerUp={onPointerUp} onPointerCancel={() => setPaused(false)} onContextMenu={(e) => e.preventDefault()}>
-            <img key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoadedId(story.id)} onError={() => setLoadedId(story.id)} />
+          <div
+            ref={media}
+            className="story-viewer__media"
+            onPointerDown={onPointerDown}
+            onPointerUp={onPointerUp}
+            onPointerCancel={() => setPaused(false)}
+            onContextMenu={(e) => e.preventDefault()}
+          >
+            <img ref={imgRef} key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoadedId(story.id)} onError={() => setLoadedId(story.id)} />
+            {loaded && st?.stickers?.length > 0 && (
+              <StickerOverlay
+                stickers={st.stickers}
+                state={st}
+                rect={rect}
+                onVote={vote}
+                onAsk={ask}
+                onMention={(sk) => navigate(`/u/${sk.handle}`, { replace: true })}
+              />
+            )}
             {!loaded && (
               <div className="story-viewer__loading">
                 <Spinner size={30} />
@@ -405,6 +573,25 @@ export default function StoryViewer({ mode = 'stories' }) {
       )}
 
       <MusicInfoSheet music={music} open={musicInfo} onClose={() => setMusicInfo(false)} />
+      <Sheet open={!!asking} onClose={() => setAsking(null)} title="Responder">
+        {asking && (
+          <form className="stk-answer" onSubmit={sendAnswer}>
+            <div className="stk-answer__prompt">{asking.prompt}</div>
+            {st?.answered?.includes(asking.id) && <p className="muted small">Você já respondeu. Pode mandar outra resposta.</p>}
+            <textarea
+              value={answer}
+              onChange={(e) => setAnswer(e.target.value)}
+              placeholder={`Responder a ${group?.character.handle}…`}
+              maxLength={300}
+              autoFocus
+              aria-label="Sua resposta"
+            />
+            <button type="submit" className="btn btn--primary" disabled={!answer.trim() || sendingAnswer}>
+              {sendingAnswer ? <Spinner size={16} className="spinner--inline" /> : 'Enviar'}
+            </button>
+          </form>
+        )}
+      </Sheet>
       <Sheet open={menu} onClose={() => setMenu(false)}>
         {hl ? (
           <>
@@ -432,6 +619,7 @@ export default function StoryViewer({ mode = 'stories' }) {
         <AddToHighlightSheet open={highlightSheet} onClose={() => setHighlightSheet(false)} story={story} character={group.character} />
       )}
       <Sheet open={!!viewers} onClose={() => setViewers(null)} title="Visto por" className="sheet--tall">
+        {own && st && <StoryResults st={st} />}
         {viewers?.length === 0 && <p className="muted center-pad">Ninguém viu ainda.</p>}
         {viewers?.map((v) => (
           <CharacterRow key={v.id} character={v} sub={timeShort(v.viewed_at)} />

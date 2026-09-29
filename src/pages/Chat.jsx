@@ -26,6 +26,7 @@ function quoteText(r) {
   if (!r || r.deleted) return 'Mensagem apagada';
   if (r.kind === 'media') return 'Foto';
   if (r.kind === 'post') return 'Publicação';
+  if (r.kind === 'story_mention') return 'Menção no story';
   return r.body || '';
 }
 
@@ -494,6 +495,18 @@ export default function Chat() {
                       <div className="msg__story">
                         <span className="muted">{mine ? 'Você respondeu ao story' : 'Respondeu ao seu story'}</span>
                         {m.story && !m.story.expired && <img src={mediaUrl(m.story.thumb_path || m.story.path)} alt="" loading="lazy" />}
+                      </div>
+                    )}
+                    {m.kind === 'story_mention' && (
+                      <div className="msg__story msg__story-mention">
+                        <span className="muted">{mine ? 'Você mencionou no seu story' : 'Mencionou você no story'}</span>
+                        {m.story && !m.story.expired ? (
+                          <button type="button" className="msg__story-open" onClick={() => navigate(`/stories/${m.story.character_id}`)} aria-label="Ver o story">
+                            <img src={mediaUrl(m.story.thumb_path || m.story.path)} alt="" loading="lazy" />
+                          </button>
+                        ) : (
+                          <span className="muted small">O story não está mais disponível.</span>
+                        )}
                       </div>
                     )}
                     {m.kind === 'note_reply' && (

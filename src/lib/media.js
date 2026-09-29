@@ -381,6 +381,7 @@ export async function drawLayers(ctx, layers, W, H) {
   await loadFonts(layers.filter((l) => l.kind === 'text').map((l) => l.font));
   for (const l of layerOrder(layers)) {
     if (l.kind === 'text' && !l.text?.trim()) continue;
+    if (l.kind !== 'text' && l.kind !== 'photo') continue; // figurinhas vão como dados, não na foto
     ctx.save();
     ctx.translate(l.x * W, l.y * H);
     ctx.rotate(l.rot || 0);
