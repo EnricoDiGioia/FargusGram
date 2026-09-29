@@ -172,7 +172,7 @@ create table if not exists public.messages (
   id              uuid primary key default gen_random_uuid(),
   conversation_id uuid not null references public.conversations (id) on delete cascade,
   sender_id       uuid not null references public.characters (id) on delete cascade,
-  kind            text not null default 'text' check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention')),
+  kind            text not null default 'text' check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention', 'sticker')),
   body            text check (body is null or char_length(body) <= 2000),
   media_path      text,
   media_width     int,
@@ -264,7 +264,7 @@ alter table public.notes add constraint notes_audience_check check (audience in 
 alter table public.messages add column if not exists note_body text;
 alter table public.messages drop constraint if exists messages_kind_check;
 alter table public.messages add constraint messages_kind_check
-  check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention'));
+  check (kind in ('text', 'media', 'post', 'story_reply', 'note_reply', 'story_mention', 'sticker'));
 alter table public.messages drop constraint if exists messages_note_body_ok;
 alter table public.messages add constraint messages_note_body_ok
   check (note_body is null or char_length(note_body) <= 200);
@@ -306,6 +306,36 @@ create table if not exists public.message_reactions (
   primary key (message_id, character_id)
 );
 create index if not exists message_reactions_conversation_idx on public.message_reactions (conversation_id, message_id);
+
+-- Fotos e figurinhas nos comentários (o texto pode ficar vazio quando tem imagem)
+alter table public.comments add column if not exists media_path   text;
+alter table public.comments add column if not exists media_width  int;
+alter table public.comments add column if not exists media_height int;
+alter table public.comments add column if not exists media_kind   text;
+alter table public.comments drop constraint if exists comments_media_ok;
+alter table public.comments add constraint comments_media_ok
+  check ((media_path is null) = (media_kind is null) and (media_kind is null or media_kind in ('image', 'sticker'))
+         and (media_path is null or char_length(media_path) <= 300));
+alter table public.comments drop constraint if exists comments_body_check;
+alter table public.comments add constraint comments_body_check
+  check (char_length(body) <= 1000 and (char_length(body) >= 1 or media_path is not null));
+
+-- Figurinhas no Direct
+alter table public.messages drop constraint if exists messages_sticker_ok;
+alter table public.messages add constraint messages_sticker_ok
+  check (kind <> 'sticker' or media_path is not null);
+
+-- Figurinhas de cada jogador (as que ele criou e as que salvou de outros);
+-- o arquivo nunca é apagado, porque pode estar em mensagens e comentários
+create table if not exists public.stickers (
+  id         uuid primary key default gen_random_uuid(),
+  player_id  uuid not null default auth.uid() references public.players (id) on delete cascade,
+  path       text not null check (char_length(path) between 5 and 300),
+  width      int not null default 512 check (width > 0),
+  height     int not null default 512 check (height > 0),
+  created_at timestamptz not null default now(),
+  unique (player_id, path)
+);
 
 -- Notificações no celular (push)
 -- (para quem instalou antes de setembro/2026, esta linha adiciona a coluna)
@@ -1045,7 +1075,9 @@ begin
     return new;
   end if;
   if new.comment_id is not null then
-    select public._push_snippet(cm.body, 90) into v_quote from public.comments cm where cm.id = new.comment_id;
+    select coalesce(nullif(public._push_snippet(cm.body, 90), ''),
+                    case cm.media_kind when 'sticker' then 'uma figurinha' when 'image' then 'uma foto' end)
+    into v_quote from public.comments cm where cm.id = new.comment_id;
   end if;
   if new.type = 'comment_like' then
     select l.emoji into v_emoji from public.comment_likes l where l.comment_id = new.comment_id and l.character_id = new.actor_id;
@@ -1115,6 +1147,7 @@ begin
     when 'story_reply' then 'respondeu ao seu story: ' || public._push_snippet(new.body, 120)
     when 'note_reply' then 'respondeu à sua nota: ' || public._push_snippet(new.body, 120)
     when 'story_mention' then 'mencionou você no story.'
+    when 'sticker' then 'enviou uma figurinha.'
     else public._push_snippet(new.body, 160)
   end;
   v_text := v_from.handle || v_where || case when new.kind = 'text' then ': ' else ' ' end || v_text;
@@ -1123,7 +1156,7 @@ begin
     from public.messages rm join public.characters c on c.id = rm.sender_id
     where rm.id = new.reply_to;
     v_reply_text := v_from.handle || ' respondeu você' || v_where
-      || case when new.kind = 'media' then ' com uma foto.' else ': ' || public._push_snippet(new.body, 160) end;
+      || case when new.kind = 'media' then ' com uma foto.' when new.kind = 'sticker' then ' com uma figurinha.' else ': ' || public._push_snippet(new.body, 160) end;
   end if;
   for r in
     select distinct on (c.owner_id) c.owner_id, c.id, c.handle
@@ -1701,7 +1734,8 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
       select coalesce(jsonb_agg(e.emoji order by e.n desc, e.emoji), '[]'::jsonb)
       from (select l.emoji, count(*) as n from public.comment_likes l where l.comment_id = c.id group by l.emoji) e
     ),
-    'pinned_at', c.pinned_at
+    'pinned_at', c.pinned_at,
+    'media_path', c.media_path, 'media_width', c.media_width, 'media_height', c.media_height, 'media_kind', c.media_kind
   ) order by c.created_at), '[]'::jsonb)
   from public.comments c
   where c.post_id = p_post;
@@ -2194,7 +2228,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'display_name', p.display_name,
     'is_admin', p.is_admin,
     'push_prefs', p.push_prefs,
-    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes'),
+    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas'),
     'characters', coalesce((
       select jsonb_agg(public._char(c.id) || jsonb_build_object('bio', c.bio, 'created_at', c.created_at) order by c.created_at)
       from public.characters c where c.owner_id = p.id
@@ -2827,6 +2861,42 @@ grant execute on function
   public.react_story(uuid, uuid, text), public.react_message(uuid, uuid, text), public.message_reactions_since(uuid, timestamptz)
 to authenticated;
 
+
+-- ---------------------------------------------------------------------
+-- 9d. Figurinhas (como as do WhatsApp) e imagens nos comentários
+-- ---------------------------------------------------------------------
+
+alter table public.stickers enable row level security;
+
+drop policy if exists stickers_select on public.stickers;
+create policy stickers_select on public.stickers for select to authenticated
+  using (player_id = (select auth.uid()));
+drop policy if exists stickers_insert on public.stickers;
+create policy stickers_insert on public.stickers for insert to authenticated
+  with check (player_id = (select auth.uid()) and (select public.is_member()));
+drop policy if exists stickers_delete on public.stickers;
+create policy stickers_delete on public.stickers for delete to authenticated
+  using (player_id = (select auth.uid()));
+
+revoke all on public.stickers from anon, authenticated;
+grant select, insert, delete on public.stickers to authenticated;
+grant all on public.stickers to service_role;
+
+-- até 200 figurinhas por jogador
+create or replace function public.tg_stickers_limit()
+returns trigger language plpgsql security definer set search_path = '' as $$
+begin
+  if (select count(*) from public.stickers s where s.player_id = new.player_id) >= 200 then
+    raise exception 'Dá para guardar até 200 figurinhas. Tire algumas antes.';
+  end if;
+  return new;
+end $$;
+drop trigger if exists stickers_limit on public.stickers;
+create trigger stickers_limit before insert on public.stickers
+  for each row execute function public.tg_stickers_limit();
+
+revoke execute on function public.tg_stickers_limit() from public, anon, authenticated;
+grant execute on function public.tg_stickers_limit() to service_role;
 
 -- ---------------------------------------------------------------------
 -- 10. Tempo real (DMs e notificações chegam na hora)

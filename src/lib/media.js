@@ -430,3 +430,141 @@ export async function renderStory({ img, crop, gradient, filterId, layers, stick
   releaseCanvas(canvas);
   return { blob, thumb, width: STORY_W, height: STORY_H };
 }
+
+// ---------------------------------------------------------------------
+// Figurinhas (como as do WhatsApp): quadrado de 512 px com fundo
+// transparente, em WebP (PNG onde o navegador não gera WebP)
+//   shape: 'square' | 'round' | 'rounded'
+//   removeWhite: apaga o fundo branco (ou quase) que encosta nas beiradas
+//   outline: contorno branco em volta, como uma figurinha de verdade
+//   text: legenda embaixo (fonte "Forte", branca com borda preta)
+// ---------------------------------------------------------------------
+export const STICKER_SIZE = 512;
+
+// apaga o fundo claro ligado às beiradas (preenchimento a partir das bordas)
+function clearWhiteBackground(ctx, x0, y0, w, h) {
+  const data = ctx.getImageData(x0, y0, w, h);
+  const d = data.data;
+  const whiteness = (i) => {
+    const r = d[i];
+    const g = d[i + 1];
+    const b = d[i + 2];
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    return max - min > 38 ? 0 : min; // colorido não conta como fundo
+  };
+  const seen = new Uint8Array(w * h);
+  const stack = [];
+  const push = (x, y) => {
+    const k = y * w + x;
+    if (seen[k]) return;
+    seen[k] = 1;
+    if (d[k * 4 + 3] > 0 && whiteness(k * 4) >= 222) stack.push(k);
+  };
+  for (let x = 0; x < w; x++) {
+    push(x, 0);
+    push(x, h - 1);
+  }
+  for (let y = 0; y < h; y++) {
+    push(0, y);
+    push(w - 1, y);
+  }
+  const cleared = new Uint8Array(w * h);
+  while (stack.length) {
+    const k = stack.pop();
+    cleared[k] = 1;
+    d[k * 4 + 3] = 0;
+    const x = k % w;
+    const y = (k - x) / w;
+    if (x > 0) push(x - 1, y);
+    if (x < w - 1) push(x + 1, y);
+    if (y > 0) push(x, y - 1);
+    if (y < h - 1) push(x, y + 1);
+  }
+  // suaviza a beirada: pixels claros encostados no que foi apagado ficam meio transparentes
+  for (let k = 0; k < w * h; k++) {
+    if (cleared[k]) continue;
+    const x = k % w;
+    const y = (k - x) / w;
+    const near = (x > 0 && cleared[k - 1]) || (x < w - 1 && cleared[k + 1]) || (y > 0 && cleared[k - w]) || (y < h - 1 && cleared[k + w]);
+    if (!near) continue;
+    const wh = whiteness(k * 4);
+    if (wh > 170) d[k * 4 + 3] = Math.round(d[k * 4 + 3] * (1 - (wh - 170) / 110));
+  }
+  ctx.putImageData(data, x0, y0);
+}
+
+// desenha a figurinha num canvas do tamanho pedido (para a prévia e para o arquivo)
+export async function drawSticker(img, crop, { shape = 'square', removeWhite = false, outline = true, text = '' } = {}, size = STICKER_SIZE) {
+  const canvas = newCanvas(size, size);
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const pad = Math.round(size * (outline ? 0.05 : 0.015));
+  const inner = size - pad * 2;
+  const base = newCanvas(size, size);
+  const b = base.getContext('2d', { willReadFrequently: true });
+  b.imageSmoothingQuality = 'high';
+  b.drawImage(img, crop.sx, crop.sy, crop.sw, crop.sh, pad, pad, inner, inner);
+  if (removeWhite) clearWhiteBackground(b, pad, pad, inner, inner);
+  if (shape !== 'square') {
+    b.globalCompositeOperation = 'destination-in';
+    b.fillStyle = '#000';
+    if (shape === 'round') {
+      b.beginPath();
+      b.arc(size / 2, size / 2, inner / 2, 0, Math.PI * 2);
+      b.fill();
+    } else {
+      roundRect(b, pad, pad, inner, inner, inner * 0.2);
+      b.fill();
+    }
+    b.globalCompositeOperation = 'source-over';
+  }
+  const caption = text.trim().toUpperCase();
+  if (caption) {
+    await loadFonts(['forte']);
+    const font = fontOf('forte');
+    let fs = inner * 0.17;
+    b.font = canvasFont(font, fs);
+    let lines = wrapLines(b, caption, inner * 0.92).slice(0, 2);
+    if (lines.some((l) => b.measureText(l).width > inner * 0.95)) {
+      fs *= 0.8;
+      b.font = canvasFont(font, fs);
+      lines = wrapLines(b, caption, inner * 0.92).slice(0, 2);
+    }
+    b.textAlign = 'center';
+    b.textBaseline = 'alphabetic';
+    b.lineJoin = 'round';
+    const lh = fs * 0.95;
+    let y = pad + inner * 0.95 - lh * (lines.length - 1);
+    for (const line of lines) {
+      b.lineWidth = fs * 0.16;
+      b.strokeStyle = '#000';
+      b.strokeText(line, size / 2, y);
+      b.fillStyle = '#fff';
+      b.fillText(line, size / 2, y);
+      y += lh;
+    }
+  }
+  if (outline) {
+    // contorno: a figura repetida em volta, pintada de branco, por baixo
+    const r = pad * 0.8;
+    for (let i = 0; i < 16; i++) {
+      const a = (i / 16) * Math.PI * 2;
+      ctx.drawImage(base, Math.cos(a) * r, Math.sin(a) * r);
+    }
+    ctx.globalCompositeOperation = 'source-in';
+    ctx.fillStyle = '#fff';
+    ctx.fillRect(0, 0, size, size);
+    ctx.globalCompositeOperation = 'source-over';
+  }
+  ctx.drawImage(base, 0, 0);
+  releaseCanvas(base);
+  return canvas;
+}
+
+export async function renderSticker(img, crop, opts) {
+  const canvas = await drawSticker(img, crop, opts, STICKER_SIZE);
+  let blob = await canvasToBlob(canvas, 'image/webp', 0.9);
+  if (blob.type !== 'image/webp') blob = await canvasToBlob(canvas, 'image/png');
+  releaseCanvas(canvas);
+  return { blob, width: STICKER_SIZE, height: STICKER_SIZE };
+}

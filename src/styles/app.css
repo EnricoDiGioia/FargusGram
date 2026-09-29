@@ -5258,3 +5258,219 @@ img[data-fade][data-shown] {
     transform: translate(-50%, -80%) scale(1);
   }
 }
+
+/* ---------- figurinhas e fotos nos comentários / Direct ---------- */
+.sticker-img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  -webkit-user-drag: none;
+  user-select: none;
+}
+.composer__row .composer__tool {
+  width: 38px;
+  height: 40px;
+  flex: none;
+  color: var(--text-2);
+  margin: 0 -6px;
+}
+.composer__attach {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px 0;
+}
+.composer__attach img {
+  width: 52px;
+  height: 52px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+.composer__attach span {
+  flex: 1;
+  font-size: 13px;
+}
+.composer__attach button {
+  display: flex;
+  width: 30px;
+  height: 30px;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+}
+.comment__image {
+  display: block;
+  margin-top: 6px;
+  max-width: min(240px, 100%);
+  border-radius: 14px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.comment__image img {
+  display: block;
+  width: 100%;
+  max-height: 300px;
+  object-fit: cover;
+}
+.comment__sticker {
+  display: block;
+  width: 118px;
+  height: 118px;
+  margin-top: 4px;
+}
+.msg__sticker {
+  width: 140px;
+  height: 140px;
+}
+.chat__input-wrap .icon-btn:first-child {
+  margin-left: -10px;
+}
+.sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  padding: 4px 14px 12px;
+}
+.sticker-grid__item,
+.sticker-grid__new {
+  aspect-ratio: 1;
+  border-radius: 14px;
+  padding: 6px;
+  -webkit-touch-callout: none;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.sticker-grid__item:active {
+  background: var(--surface);
+  transform: scale(0.94);
+}
+.sticker-grid__new {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border: 2px dashed var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+}
+.sticker-grid__empty,
+.sticker-grid__hint {
+  padding: 0 24px 16px;
+}
+.sticker-save {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  padding: 4px 16px 18px;
+}
+.sticker-save img {
+  width: 160px;
+  height: 160px;
+}
+.sticker-save .btn {
+  width: 100%;
+}
+/* criar figurinha */
+.sticker-maker {
+  position: fixed;
+  inset: 0;
+  z-index: 250;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: #0b0b0f;
+  color: #fff;
+  padding: calc(8px + var(--safe-top)) 12px calc(12px + var(--safe-bottom));
+  overflow-y: auto;
+  animation: fade-in 0.15s;
+}
+.sticker-maker__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sticker-maker__top strong {
+  font-size: 16px;
+}
+.sticker-maker__crop {
+  width: min(100%, 44dvh);
+  margin: 0 auto;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.sticker-maker__row {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  width: min(100%, 460px);
+  margin: 0 auto;
+}
+.sticker-maker__preview {
+  flex: none;
+  width: 116px;
+  height: 116px;
+  border-radius: 14px;
+  /* xadrez para ver o que ficou transparente */
+  background: repeating-conic-gradient(#2a2a31 0% 25%, #1c1c21 0% 50%) 50% / 16px 16px;
+}
+.sticker-maker__opts {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sticker-maker__chips {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.sticker-maker__chips button {
+  height: 30px;
+  padding: 0 11px;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.sticker-maker__chips button.is-on {
+  background: #fff;
+  color: #111;
+}
+.sticker-maker__toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  align-self: flex-start;
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sticker-maker__toggle.is-on {
+  background: var(--accent);
+  color: #fff;
+}
+.sticker-maker__text {
+  height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  background: transparent;
+  color: #fff;
+  font-size: 16px;
+  outline: 0;
+}
+.sticker-maker__hint {
+  color: rgba(255, 255, 255, 0.6);
+}

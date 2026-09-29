@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useNavigate, useParams } from 'react-router';
-import { Image as ImageIcon, Info, Copy, Trash2, LogOut, Pencil, Reply, X } from 'lucide-react';
+import { Image as ImageIcon, Info, Copy, Trash2, LogOut, Pencil, Reply, X, Sticker, BookmarkPlus } from 'lucide-react';
 import { BackButton, IconButton, Spinner, EmptyState, Handle, Sheet, SheetItem, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import RichText from '../components/RichText';
@@ -17,6 +17,7 @@ import { chatStamp } from '../lib/format';
 import { longPress } from '../lib/hooks';
 import { prepareImage, renderDmImage } from '../lib/media';
 import * as api from '../lib/api';
+import { StickerTray, StickerImg, useSaveSticker } from '../components/Figurinhas';
 
 const GAP = 30 * 60 * 1000;
 const SWIPE = 56; // quanto arrastar para responder (px)
@@ -28,6 +29,7 @@ const MSG_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
 function quoteText(r) {
   if (!r || r.deleted) return 'Mensagem apagada';
   if (r.kind === 'media') return 'Foto';
+  if (r.kind === 'sticker') return 'Figurinha';
   if (r.kind === 'post') return 'Publicação';
   if (r.kind === 'story_mention') return 'Menção no story';
   return r.body || '';
@@ -84,6 +86,8 @@ export default function Chat() {
   const [replyTo, setReplyTo] = useState(null); // mensagem que está sendo respondida
   const [flashId, setFlashId] = useState(null);
   const [reactSheet, setReactSheet] = useState(null); // quem reagiu a uma mensagem
+  const [tray, setTray] = useState(false);
+  const saveSticker = useSaveSticker();
   const [heartPop, setHeartPop] = useState(null); // coração do toque duplo
   const lastTap = useRef({ id: null, t: 0 });
   const pendingJump = useRef(null);
@@ -384,6 +388,20 @@ export default function Chat() {
     }
   };
 
+  // figurinha: vai na hora (como no WhatsApp)
+  const sendSticker = async (st) => {
+    setTray(false);
+    const reply = replyTo;
+    try {
+      await api.sendMessage({ conversation: id, sender: active.id, kind: 'sticker', media: { path: st.path, width: st.width, height: st.height }, replyTo: reply?.id });
+      setReplyTo(null);
+      stick.current = true;
+      await fetchNew();
+    } catch (err) {
+      toast(api.errorMessage(err));
+    }
+  };
+
   const sendImage = async (e) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -553,7 +571,9 @@ export default function Chat() {
                           <Reply size={12} /> {replyCaption(m, m.reply, active.id, sender?.handle)}
                         </span>
                         <button type="button" className="msg__quote" onClick={() => jumpTo(m.reply)} disabled={!!m.reply.deleted || m.pending}>
-                          {m.reply.kind === 'media' && m.reply.media_path && <img src={mediaUrl(m.reply.media_path)} alt="" loading="lazy" />}
+                          {(m.reply.kind === 'media' || m.reply.kind === 'sticker') && m.reply.media_path && (
+                            <img src={mediaUrl(m.reply.media_path)} alt="" loading="lazy" />
+                          )}
                           <span>{quoteText(m.reply)}</span>
                         </button>
                       </div>
@@ -583,6 +603,11 @@ export default function Chat() {
                       </div>
                     )}
                     {m.kind === 'post' && <PostShare post={m.post} />}
+                    {m.kind === 'sticker' && m.media_path && (
+                      <div className="msg__sticker">
+                        <StickerImg path={m.media_path} />
+                      </div>
+                    )}
                     {m.kind === 'media' && m.media_path && (
                       <button type="button" className="msg__image" onClick={() => setLightbox(m.media_path)}>
                         <img
@@ -641,6 +666,11 @@ export default function Chat() {
           </div>
         )}
         <div className="chat__input-wrap">
+          {can('figurinhas') && (
+            <IconButton label="Figurinhas" onClick={() => setTray(true)}>
+              <Sticker size={22} strokeWidth={1.8} />
+            </IconButton>
+          )}
           <textarea
             ref={inputRef}
             rows={1}
@@ -694,6 +724,17 @@ export default function Chat() {
         {menuMsg && !menuMsg.failed && (
           <SheetItem icon={<Reply size={22} />} onClick={() => startReply(menuMsg)}>
             Responder
+          </SheetItem>
+        )}
+        {menuMsg?.kind === 'sticker' && can('figurinhas') && (
+          <SheetItem
+            icon={<BookmarkPlus size={22} />}
+            onClick={() => {
+              saveSticker({ path: menuMsg.media_path, width: menuMsg.media_width, height: menuMsg.media_height });
+              setMenuMsg(null);
+            }}
+          >
+            Salvar figurinha
           </SheetItem>
         )}
         {menuMsg?.body && (
@@ -766,6 +807,8 @@ export default function Chat() {
           Sair do grupo
         </SheetItem>
       </Sheet>
+
+      {can('figurinhas') && <StickerTray open={tray} onClose={() => setTray(false)} onPick={sendSticker} />}
 
       {lightbox &&
         createPortal(

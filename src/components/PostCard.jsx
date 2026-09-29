@@ -330,7 +330,7 @@ export default function PostCard({ post, showAllComments = false }) {
               <Link to={`/u/${cm.handle}`} className="post__caption-handle">
                 {cm.handle}
               </Link>{' '}
-              <RichText text={cm.body.length > 120 ? cm.body.slice(0, 117) + '…' : cm.body} />
+              {cm.body ? <RichText text={cm.body.length > 120 ? cm.body.slice(0, 117) + '…' : cm.body} /> : <span className="muted">📷 imagem</span>}
             </div>
           ))}
         <Link to={`/p/${post.id}`} className="post__time">

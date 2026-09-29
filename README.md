@@ -7,7 +7,8 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 ## O que tem
 
 - Feed com publicações de até 10 fotos, com recorte e filtros
-- Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
+- Curtir com toque duplo, comentar e responder comentários (com foto ou figurinha), salvar e mandar no Direct
+- Figurinhas como as do WhatsApp: crie com as suas fotos, salve as que mandarem e use no Direct e nos comentários
 - Reações com emoji nos comentários, nas mensagens do Direct, nos stories e nos destaques; até 3 comentários fixados pelo dono do post
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
 - Figurinhas nos stories: enquete, caixinha de perguntas, menção, local e horário
@@ -129,6 +130,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-melhores-amigos.sql` | Melhores amigos (rode depois da de destaques e notas) |
 | `2026-09-interacoes.sql` | Reações e comentários fixados; figurinhas do story (rode depois da de melhores amigos) |
 | `2026-09-reacoes.sql` | Reações nos stories, nos destaques e nas mensagens do Direct (rode depois da de interações) |
+| `2026-09-figurinhas.sql` | Figurinhas no Direct e nos comentários, e fotos nos comentários (rode depois da de reações) |
 
 ## Notificações no celular
 
@@ -207,6 +209,18 @@ A imagem publicada sai exatamente como aparece no editor. As fontes vêm junto c
 - **Reagir a um comentário:** o coração continua ali do lado. Para outro emoji (😂 😮 😢 🔥 👏), segure o dedo no comentário ou toque em **Reagir**. Cada personagem tem uma reação por comentário; tocar de novo no seu emoji tira. Embaixo do comentário aparecem os emojis mais usados e o total, e quem escreveu recebe o aviso "reagiu com 😂 ao seu comentário".
 - **Fixar:** o dono da publicação vê **Fixar** embaixo de cada comentário. Os fixados (até 3) ficam no topo com "Fixado pelo autor". **Desafixar** volta o comentário para o lugar dele. Respostas não podem ser fixadas.
 
+## Figurinhas e fotos nos comentários e no Direct
+
+Cada jogador tem a sua coleção de figurinhas (vale para todos os personagens dele), como no WhatsApp.
+
+- **Criar:** nos comentários ou numa conversa do Direct, toque no ícone de figurinha e em **Criar**. Escolha uma foto, enquadre no quadrado e escolha o formato (quadrada, arredondada ou redonda). **Tirar fundo branco** apaga o fundo claro em volta (ótimo para desenhos e prints com fundo branco), **Contorno branco** deixa com cara de adesivo e dá para pôr uma legenda. A prévia mostra como fica, com o xadrez onde ficou transparente. Toque em **Salvar**.
+- **Mandar:** toque na figurinha na bandeja e ela vai na hora, no comentário ou na conversa. No Direct ela aparece solta, sem balão, e dá para responder e reagir como qualquer mensagem.
+- **Salvar a de alguém:** no Direct, segure a figurinha e toque em **Salvar figurinha**. Nos comentários, toque na figurinha e em **Salvar nas minhas figurinhas**.
+- **Tirar da coleção:** segure a figurinha na bandeja. Quem já recebeu continua vendo.
+- **Foto no comentário:** toque no ícone de foto ao lado do campo, escreva um texto se quiser e toque em **Publicar**. Tocar na foto abre em tela cheia. Excluir o comentário apaga a foto.
+
+Cada figurinha é um arquivo pequeno (uns 30 a 80 KB), e cada jogador pode guardar até 200.
+
 ## Figurinhas no story
 
 No editor de story, toque na figurinha (ícone de adesivo, do lado direito) e escolha:
@@ -244,7 +258,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 
 ## Limites do plano grátis
 
-- **Fotos:** o Supabase grátis tem 1 GB. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
+- **Fotos:** o Supabase grátis tem 1 GB. Figurinhas e fotos dos comentários também contam, mas são pequenas. O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
 - **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
 - **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.

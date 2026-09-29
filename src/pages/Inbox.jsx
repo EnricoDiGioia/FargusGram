@@ -41,6 +41,7 @@ function preview(conv, meId) {
   let t;
   if (lm.kind === 'post') t = mine ? 'Você enviou uma publicação' : 'Enviou uma publicação';
   else if (lm.kind === 'media') t = mine ? 'Você enviou uma foto' : 'Enviou uma foto';
+  else if (lm.kind === 'sticker') t = mine ? 'Você enviou uma figurinha' : 'Enviou uma figurinha';
   else if (lm.is_story_reply) t = mine ? `Você respondeu ao story: ${lm.body}` : `Respondeu ao seu story: ${lm.body}`;
   else if (lm.kind === 'story_mention') t = mine ? 'Você mencionou no seu story' : 'Mencionou você no story';
   else if (lm.is_note_reply) t = mine ? `Você respondeu à nota: ${lm.body}` : `Respondeu à sua nota: ${lm.body}`;

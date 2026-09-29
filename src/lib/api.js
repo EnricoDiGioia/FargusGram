@@ -38,6 +38,8 @@ export function errorMessage(err) {
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
   )
     return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
+  if (((code === 'PGRST205' || code === '42P01') && /stickers/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /media_kind|media_path/.test(msg)))
+    return 'O banco ainda não tem a atualização de figurinhas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-figurinhas.sql no SQL Editor do Supabase (veja o README).';
   if (code === 'PGRST202' && /react_story|react_message|message_reactions_since/.test(msg))
     return 'O banco ainda não tem a atualização de reações. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-reacoes.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /react_comment|pin_comment|story_vote|story_answer|story_interactions/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /stickers/.test(msg)))
@@ -207,19 +209,44 @@ export async function unsave(post, character) {
 // ---------------------------------------------------------------------
 export const comments = (post, viewer) => rpc('post_comments', { p_post: post, p_viewer: viewer });
 
-export async function addComment({ post, character, body, parent }) {
+export async function addComment({ post, character, body, parent, media }) {
+  const insert = { post_id: post, character_id: character, body: (body || '').trim(), parent_id: parent || null };
+  // foto ou figurinha: só com o banco atualizado (figurinhas)
+  if (media) Object.assign(insert, { media_path: media.path, media_width: media.width, media_height: media.height, media_kind: media.kind });
   const row = unwrap(
     await supabase
       .from('comments')
-      .insert({ post_id: post, character_id: character, body: body.trim(), parent_id: parent || null })
+      .insert(insert)
       .select('id, created_at')
       .single()
   );
   pokePush();
   return row;
 }
-export async function deleteComment(id) {
+export async function deleteComment(id, comment) {
   unwrap(await supabase.from('comments').delete().eq('id', id));
+  // a foto do comentário vai junto (figurinha não: ela continua nas coleções)
+  if (comment?.media_kind === 'image' && comment.media_path) await supabase.storage.from('media').remove([comment.media_path]);
+}
+
+// ---------------------------------------------------------------------
+// Figurinhas (as que o jogador criou e as que salvou)
+// ---------------------------------------------------------------------
+const STICKER_COLS = 'id, path, width, height, created_at';
+export const myStickers = async () => unwrap(await supabase.from('stickers').select(STICKER_COLS).order('created_at', { ascending: false }));
+export async function createSticker(uid, characterId, blob) {
+  const path = await uploadImage(uid, characterId, 'stickers', blob);
+  return unwrap(await supabase.from('stickers').insert({ path, width: 512, height: 512 }).select(STICKER_COLS).single());
+}
+// salvar uma figurinha que alguém mandou (null: já estava nas suas)
+export async function saveSticker({ path, width, height }) {
+  const { data, error } = await supabase.from('stickers').insert({ path, width: width || 512, height: height || 512 }).select(STICKER_COLS).single();
+  if (error?.code === '23505') return null;
+  if (error) throw error;
+  return data;
+}
+export async function removeSticker(id) {
+  unwrap(await supabase.from('stickers').delete().eq('id', id));
 }
 export async function likeComment(comment, character) {
   const { error } = await supabase.from('comment_likes').insert({ comment_id: comment, character_id: character });
@@ -404,7 +431,7 @@ export async function leaveConversation(conv, character) {
   unwrap(await supabase.from('conversation_members').delete().eq('conversation_id', conv).eq('character_id', character));
 }
 export async function deleteMessage(msg) {
-  if (msg.media_path) await supabase.storage.from('media').remove([msg.media_path]);
+  if (msg.media_path && msg.kind !== 'sticker') await supabase.storage.from('media').remove([msg.media_path]);
   unwrap(await supabase.from('messages').delete().eq('id', msg.id));
 }
 
