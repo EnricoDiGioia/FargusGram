@@ -18,6 +18,8 @@ import { cleanMusic, clipOf, player, usePlayer } from '../lib/music';
 import * as api from '../lib/api';
 
 const DURATION = 5500;
+// reações rápidas (aparecem ao tocar em "Responder"); ❤️ é a curtida
+export const STORY_REACTIONS = ['😂', '😮', '😍', '😢', '👏', '🔥', '🎉', '❤️'];
 
 // Para o dono: respostas das caixinhas e votos das enquetes
 function StoryResults({ st }) {
@@ -100,6 +102,9 @@ export default function StoryViewer({ mode = 'stories' }) {
   const [answer, setAnswer] = useState('');
   const [sendingAnswer, setSendingAnswer] = useState(false);
   const [rect, setRect] = useState(null); // onde a foto está na tela (as figurinhas vão por cima)
+  const [replyFocus, setReplyFocus] = useState(false);
+  const [burst, setBurst] = useState(null); // emoji subindo depois de reagir
+  const replyInput = useRef(null);
   const media = useRef(null);
   const imgRef = useRef(null);
   const ps = usePlayer();
@@ -111,6 +116,7 @@ export default function StoryViewer({ mode = 'stories' }) {
   const cid = order[ci];
   const story = group?.stories?.[si];
   const withStickers = can('interacoes');
+  const canReact = can('reacoes');
   const st = story ? inter[story.id] : null;
   const loaded = !!story && loadedId === story.id;
   const own = group && isMine(group.character.id);
@@ -358,6 +364,29 @@ export default function StoryViewer({ mode = 'stories' }) {
     else next();
   };
 
+  // reagir ao story (ou ao story do destaque): tocar de novo no mesmo emoji tira
+  const react = async (emoji) => {
+    if (!story) return;
+    const id = story.id;
+    const before = inter[id]?.my_reaction || null;
+    const next = before === emoji ? null : emoji;
+    setInter((m) => ({ ...m, [id]: { ...(m[id] || { stickers: [] }), my_reaction: next } }));
+    if (next) setBurst({ emoji: next, key: Date.now() });
+    try {
+      await api.reactStory(id, active.id, next);
+    } catch (err) {
+      setInter((m) => ({ ...m, [id]: { ...(m[id] || { stickers: [] }), my_reaction: before } }));
+      toast(api.errorMessage(err));
+    }
+  };
+  useEffect(() => {
+    if (!burst) return undefined;
+    const t = setTimeout(() => setBurst(null), 1300);
+    return () => clearTimeout(t);
+  }, [burst]);
+  const myReaction = st?.my_reaction || null;
+  const ownReactions = own && st?.reactions?.length ? st.reactions : null;
+
   const sendReply = async (body) => {
     const text = (body ?? reply).trim();
     if (!text) return;
@@ -531,6 +560,11 @@ export default function StoryViewer({ mode = 'stories' }) {
               <div className="story-viewer__own">
                 <button type="button" className="story-viewer__seen" onClick={openViewers}>
                   <Eye size={18} /> Visualizações
+                  {ownReactions && (
+                    <span className="story-viewer__reacts">
+                      {[...new Set(ownReactions)].slice(0, 3).join('')} {ownReactions.length}
+                    </span>
+                  )}
                 </button>
                 {!hl && can('destaques') && (
                   <button type="button" className="story-viewer__highlight" onClick={() => setHighlightSheet(true)}>
@@ -550,16 +584,37 @@ export default function StoryViewer({ mode = 'stories' }) {
                 }}
               >
                 <input
+                  ref={replyInput}
                   value={reply}
                   onChange={(e) => setReply(e.target.value)}
-                  onFocus={() => setPaused(true)}
-                  onBlur={() => setPaused(false)}
+                  onFocus={() => {
+                    setPaused(true);
+                    setReplyFocus(true);
+                  }}
+                  onBlur={() => {
+                    setPaused(false);
+                    setReplyFocus(false);
+                  }}
                   placeholder={`Responder a ${group.character.handle}…`}
                   maxLength={500}
                 />
                 {reply.trim() ? (
                   <button type="submit" className="icon-btn icon-btn--light" aria-label="Enviar">
                     <Send size={24} />
+                  </button>
+                ) : canReact ? (
+                  <button
+                    type="button"
+                    className={`icon-btn icon-btn--light story-like ${myReaction ? 'is-on' : ''}`}
+                    aria-label={myReaction ? 'Tirar reação' : 'Curtir story'}
+                    aria-pressed={!!myReaction}
+                    onClick={() => react(myReaction || '❤️')}
+                  >
+                    {myReaction && myReaction !== '❤️' ? (
+                      <span className="story-like__emoji">{myReaction}</span>
+                    ) : (
+                      <Heart size={26} fill={myReaction ? 'currentColor' : 'none'} strokeWidth={myReaction ? 0 : 2} />
+                    )}
                   </button>
                 ) : (
                   <button type="button" className="icon-btn icon-btn--light" aria-label="Reagir com coração" onClick={() => sendReply('❤️')}>
@@ -569,6 +624,39 @@ export default function StoryViewer({ mode = 'stories' }) {
               </form>
             )}
           </div>
+
+          {canReact && !own && replyFocus && !reply.trim() && (
+            <div className="story-quick" role="group" aria-label="Reações rápidas">
+              <span className="story-quick__title">Reações rápidas</span>
+              <div className="story-quick__grid">
+                {STORY_REACTIONS.map((em) => (
+                  <button
+                    key={em}
+                    type="button"
+                    className={myReaction === em ? 'is-on' : ''}
+                    aria-label={`Reagir com ${em}`}
+                    onPointerDown={(e) => e.preventDefault()}
+                    onMouseDown={(e) => e.preventDefault()}
+                    onClick={() => {
+                      react(em);
+                      replyInput.current?.blur();
+                    }}
+                  >
+                    {em}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+          {burst && (
+            <div className="story-burst" key={burst.key} aria-hidden="true">
+              {[0, 1, 2, 3, 4, 5].map((i) => (
+                <span key={i} style={{ '--i': i }}>
+                  {burst.emoji}
+                </span>
+              ))}
+            </div>
+          )}
         </>
       )}
 
@@ -622,7 +710,7 @@ export default function StoryViewer({ mode = 'stories' }) {
         {own && st && <StoryResults st={st} />}
         {viewers?.length === 0 && <p className="muted center-pad">Ninguém viu ainda.</p>}
         {viewers?.map((v) => (
-          <CharacterRow key={v.id} character={v} sub={timeShort(v.viewed_at)} />
+          <CharacterRow key={v.id} character={v} sub={timeShort(v.viewed_at)} right={v.reaction ? <span className="viewer-reaction">{v.reaction}</span> : null} />
         ))}
       </Sheet>
     </div>

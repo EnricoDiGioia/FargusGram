@@ -10,7 +10,7 @@ import { ConversationAvatar, conversationTitle } from './Inbox';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { realtime } from '../state/unread';
-import { mediaUrl } from '../lib/supabase';
+import { mediaUrl, supabase } from '../lib/supabase';
 import { fadeIn } from '../lib/fade';
 import { on, emit } from '../lib/events';
 import { chatStamp } from '../lib/format';
@@ -22,6 +22,9 @@ const GAP = 30 * 60 * 1000;
 const SWIPE = 56; // quanto arrastar para responder (px)
 
 // Texto curto da mensagem citada
+// reações das mensagens (as mesmas que o banco aceita)
+const MSG_REACTIONS = ['❤️', '😂', '😮', '😢', '😡', '👍'];
+
 function quoteText(r) {
   if (!r || r.deleted) return 'Mensagem apagada';
   if (r.kind === 'media') return 'Foto';
@@ -60,7 +63,7 @@ function PostShare({ post }) {
 
 export default function Chat() {
   const { id } = useParams();
-  const { active, uid } = useSession();
+  const { active, uid, can } = useSession();
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -80,6 +83,9 @@ export default function Chat() {
   const [uploading, setUploading] = useState(false);
   const [replyTo, setReplyTo] = useState(null); // mensagem que está sendo respondida
   const [flashId, setFlashId] = useState(null);
+  const [reactSheet, setReactSheet] = useState(null); // quem reagiu a uma mensagem
+  const [heartPop, setHeartPop] = useState(null); // coração do toque duplo
+  const lastTap = useRef({ id: null, t: 0 });
   const pendingJump = useRef(null);
   const swipe = useRef(null);
   const msgsRef = useRef(null);
@@ -152,6 +158,65 @@ export default function Chat() {
     }
   }, [id, active.id, markRead]);
 
+  // reações: atualiza as das mensagens que estão na tela
+  const canReact = can('reacoes');
+  const refreshReactions = useCallback(async () => {
+    if (!canReact) return;
+    const first = msgsRef.current?.find((m) => !m.pending);
+    if (!first) return;
+    try {
+      const map = (await api.messageReactionsSince(id, first.created_at)) || {};
+      setMsgs((xs) =>
+        xs?.map((m) => {
+          if (m.pending || Date.parse(m.created_at) < Date.parse(first.created_at)) return m;
+          const next = map[m.id] || [];
+          const same = JSON.stringify(next) === JSON.stringify(m.reactions || []);
+          return same ? m : { ...m, reactions: next };
+        })
+      );
+    } catch {
+      /* tenta de novo depois */
+    }
+  }, [id, canReact]);
+  useEffect(() => {
+    if (!canReact) return undefined;
+    const ch = supabase
+      .channel('fg-react-' + id)
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'message_reactions', filter: `conversation_id=eq.${id}` }, () => refreshReactions())
+      .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'message_reactions', filter: `conversation_id=eq.${id}` }, () => refreshReactions())
+      .on('postgres_changes', { event: 'DELETE', schema: 'public', table: 'message_reactions' }, () => refreshReactions())
+      .subscribe();
+    return () => {
+      supabase.removeChannel(ch);
+    };
+  }, [id, canReact, refreshReactions]);
+
+  // reagir (null tira); tocar de novo no mesmo emoji também tira
+  const react = async (m, emoji) => {
+    if (!m || m.pending || m.failed) return;
+    const mineNow = (m.reactions || []).find((r) => r.character_id === active.id)?.emoji || null;
+    const next = mineNow === emoji ? null : emoji;
+    const patch = (list) => [...(list || []).filter((r) => r.character_id !== active.id), ...(next ? [{ emoji: next, character_id: active.id }] : [])];
+    setMsgs((xs) => xs.map((x) => (x.id === m.id ? { ...x, reactions: patch(x.reactions) } : x)));
+    try {
+      await api.reactMessage(m.id, active.id, next);
+    } catch (err) {
+      refreshReactions();
+      toast(api.errorMessage(err));
+    }
+  };
+  // toque duplo na mensagem: ❤️
+  const onMsgTap = (e, m) => {
+    if (!canReact || m.pending || m.failed || e.target.closest('button, a')) return;
+    const now = Date.now();
+    if (lastTap.current.id === m.id && now - lastTap.current.t < 320) {
+      lastTap.current = { id: null, t: 0 };
+      react(m, '❤️');
+      setHeartPop({ id: m.id, key: now });
+      setTimeout(() => setHeartPop((h) => (h?.key === now ? null : h)), 850);
+    } else lastTap.current = { id: m.id, t: now };
+  };
+
   // novas mensagens: tempo real + conferência periódica
   useEffect(() => on('message:new', (m) => m?.conversation_id === id && fetchNew()), [id, fetchNew]);
   useEffect(() => {
@@ -160,12 +225,13 @@ export default function Chat() {
       if (document.visibilityState === 'visible') {
         await fetchNew();
         loadInfo();
+        refreshReactions();
       }
       t = setTimeout(tick, realtime.ok ? 20000 : 3500);
     };
     t = setTimeout(tick, 3500);
     return () => clearTimeout(t);
-  }, [fetchNew, loadInfo]);
+  }, [fetchNew, loadInfo, refreshReactions]);
 
   // rolagem: fica no fim quando chega mensagem (se já estava no fim)
   useLayoutEffect(() => {
@@ -469,6 +535,7 @@ export default function Chat() {
                     onPointerUp={(e) => {
                       lp.onPointerUp(e);
                       swipeEnd(m);
+                      onMsgTap(e, m);
                     }}
                     onPointerCancel={(e) => {
                       lp.onPointerCancel(e);
@@ -533,6 +600,22 @@ export default function Chat() {
                       </div>
                     )}
                     {m.failed && <span className="msg__failed">Não enviada</span>}
+                    {heartPop?.id === m.id && (
+                      <span key={heartPop.key} className="msg__heart-pop" aria-hidden="true">
+                        ❤️
+                      </span>
+                    )}
+                    {m.reactions?.length > 0 && (
+                      <button
+                        type="button"
+                        className={`msg__reactions ${m.reactions.some((r) => r.character_id === active.id) ? 'is-mine' : ''}`}
+                        onClick={() => setReactSheet(m.id)}
+                        aria-label={`Reações: ${m.reactions.map((r) => r.emoji).join(' ')}`}
+                      >
+                        {[...new Set(m.reactions.map((r) => r.emoji))].slice(0, 3).join('')}
+                        {m.reactions.length > 1 && <b>{m.reactions.length}</b>}
+                      </button>
+                    )}
                   </div>
                 </div>
               </div>
@@ -587,6 +670,27 @@ export default function Chat() {
       </form>
 
       <Sheet open={!!menuMsg} onClose={() => setMenuMsg(null)}>
+        {canReact && menuMsg && !menuMsg.failed && (
+          <div className="msg-react-row" role="group" aria-label="Reagir à mensagem">
+            {MSG_REACTIONS.map((em) => {
+              const on = (menuMsg.reactions || []).some((r) => r.character_id === active.id && r.emoji === em);
+              return (
+                <button
+                  key={em}
+                  type="button"
+                  className={on ? 'is-on' : ''}
+                  aria-label={`Reagir com ${em}`}
+                  onClick={() => {
+                    react(menuMsg, em);
+                    setMenuMsg(null);
+                  }}
+                >
+                  {em}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {menuMsg && !menuMsg.failed && (
           <SheetItem icon={<Reply size={22} />} onClick={() => startReply(menuMsg)}>
             Responder
@@ -613,6 +717,31 @@ export default function Chat() {
             Cancelar envio
           </SheetItem>
         )}
+      </Sheet>
+
+      <Sheet open={!!reactSheet} onClose={() => setReactSheet(null)} title="Reações">
+        {(msgs?.find((x) => x.id === reactSheet)?.reactions || []).map((r) => {
+          const mine = r.character_id === active.id;
+          const who = mine ? active : byId[r.character_id];
+          if (!who) return null;
+          return (
+            <CharacterRow
+              key={r.character_id}
+              character={who}
+              sub={mine ? 'Toque para tirar' : undefined}
+              onClick={() => {
+                if (mine) {
+                  react(
+                    msgs.find((x) => x.id === reactSheet),
+                    r.emoji
+                  );
+                  setReactSheet(null);
+                } else navigate(`/u/${who.handle}`);
+              }}
+              right={<span className="viewer-reaction">{r.emoji}</span>}
+            />
+          );
+        })}
       </Sheet>
 
       <Sheet open={groupSheet} onClose={() => setGroupSheet(false)} title={info ? conversationTitle(info) : 'Grupo'}>

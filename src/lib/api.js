@@ -38,6 +38,8 @@ export function errorMessage(err) {
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
   )
     return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
+  if (code === 'PGRST202' && /react_story|react_message|message_reactions_since/.test(msg))
+    return 'O banco ainda não tem a atualização de reações. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-reacoes.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /react_comment|pin_comment|story_vote|story_answer|story_interactions/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /stickers/.test(msg)))
     return 'O banco ainda não tem a atualização de reações e figurinhas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-interacoes.sql no SQL Editor do Supabase (veja o README).';
   if ((code === 'PGRST202' && /create_post/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /music/.test(msg)))
@@ -260,6 +262,11 @@ export async function storyAnswer(story, sticker, character, body) {
   await rpc('story_answer', { p_story: story, p_sticker: sticker, p_character: character, p_body: body });
   pokePush();
 }
+// Reações (❤️ é a curtida; null tira): stories/destaques e mensagens do Direct
+export async function reactStory(story, character, emoji) {
+  await rpc('react_story', { p_story: story, p_character: character, p_emoji: emoji });
+  if (emoji) pokePush();
+}
 export async function markStorySeen(story, character) {
   await supabase
     .from('story_views')
@@ -364,6 +371,11 @@ export const inbox = (viewer) => rpc('inbox', { p_viewer: viewer });
 export const conversationInfo = (conv, viewer) => rpc('conversation_info', { p_conversation: conv, p_viewer: viewer });
 export const getMessages = (conv, { before, after, limit = 40 } = {}) =>
   rpc('get_messages', { p_conversation: conv, p_before: before ?? null, p_after: after ?? null, p_limit: limit });
+export async function reactMessage(message, character, emoji) {
+  await rpc('react_message', { p_message: message, p_character: character, p_emoji: emoji });
+  if (emoji) pokePush();
+}
+export const messageReactionsSince = (conv, from) => rpc('message_reactions_since', { p_conversation: conv, p_from: from ?? null });
 export const startConversation = (from, to, title) =>
   rpc('start_conversation', { p_from: from, p_to: to, p_title: title ?? null });
 

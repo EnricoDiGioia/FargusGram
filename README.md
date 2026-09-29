@@ -8,7 +8,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 
 - Feed com publicações de até 10 fotos, com recorte e filtros
 - Curtir com toque duplo, comentar e responder comentários, salvar e mandar no Direct
-- Reações com emoji nos comentários e até 3 comentários fixados pelo dono do post
+- Reações com emoji nos comentários, nas mensagens do Direct, nos stories e nos destaques; até 3 comentários fixados pelo dono do post
 - Stories de 24 horas (foto ou texto), com lista de quem viu e respostas
 - Figurinhas nos stories: enquete, caixinha de perguntas, menção, local e horário
 - Textos e fotos por cima, no story e na publicação: vários textos em 6 fontes e fotos coladas, que dá para arrastar, girar e mudar o tamanho
@@ -128,6 +128,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-destaques-notas.sql` | Destaques no perfil e notas no Direct (rode depois das anteriores) |
 | `2026-09-melhores-amigos.sql` | Melhores amigos (rode depois da de destaques e notas) |
 | `2026-09-interacoes.sql` | Reações e comentários fixados; figurinhas do story (rode depois da de melhores amigos) |
+| `2026-09-reacoes.sql` | Reações nos stories, nos destaques e nas mensagens do Direct (rode depois da de interações) |
 
 ## Notificações no celular
 
@@ -201,6 +202,8 @@ A imagem publicada sai exatamente como aparece no editor. As fontes vêm junto c
 
 ## Reações e comentários fixados
 
+- **Reagir a uma mensagem do Direct:** segure o dedo na mensagem (no computador, clique com o botão direito) e escolha ❤️ 😂 😮 😢 😡 ou 👍 em cima do menu. Toque duplo na mensagem manda um ❤️. A reação aparece embaixo da mensagem, para todos da conversa, e quem mandou recebe o aviso. Tocar nas reações mostra quem reagiu; na sua, dá para tirar.
+- **Reagir a um story ou destaque:** o coração ao lado de "Responder" curte o story (não manda mais mensagem no Direct). Tocando em **Responder**, aparecem as reações rápidas: 😂 😮 😍 😢 👏 🔥 🎉 ❤️. Cada um tem uma reação por story, e tocar de novo tira. O dono recebe o aviso ("curtiu seu story" ou "reagiu com 🔥 ao seu story"), vê o resumo em **Visualizações** e o emoji de cada pessoa na lista. Responder com texto continua indo para o Direct.
 - **Reagir a um comentário:** o coração continua ali do lado. Para outro emoji (😂 😮 😢 🔥 👏), segure o dedo no comentário ou toque em **Reagir**. Cada personagem tem uma reação por comentário; tocar de novo no seu emoji tira. Embaixo do comentário aparecem os emojis mais usados e o total, e quem escreveu recebe o aviso "reagiu com 😂 ao seu comentário".
 - **Fixar:** o dono da publicação vê **Fixar** embaixo de cada comentário. Os fixados (até 3) ficam no topo com "Fixado pelo autor". **Desafixar** volta o comentário para o lugar dele. Respostas não podem ser fixadas.
 
@@ -253,6 +256,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 - Publicações, perfis, comentários e mensagens só aparecem para quem entrou com o código de convite.
 - As fotos ficam num bucket público do Supabase. O endereço de cada foto é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
 - Os e-mails dos jogadores só aparecem para os admins.
+- Reações a stories e destaques só o dono do story vê (e cada um vê a própria). Reações às mensagens, só quem está na conversa.
 - Respostas das caixinhas de perguntas e quem votou em cada opção das enquetes só o dono do story vê. Os outros veem só as porcentagens, e só depois de votar.
 - Stories e notas de **Melhores amigos** só chegam a quem está na lista: o próprio banco esconde, não só a tela. A lista em si é secreta, só o dono vê. (A foto do story continua no bucket público: quem estiver na lista e copiar o endereço da imagem consegue repassar.)
 - As notificações no celular passam pelos servidores de push do Google, da Apple ou da Mozilla (depende do celular), mas vão criptografadas: só o aparelho de quem recebe consegue ler o texto.
