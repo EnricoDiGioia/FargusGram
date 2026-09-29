@@ -45,6 +45,14 @@ create table if not exists public.characters (
 );
 create index if not exists characters_owner_idx on public.characters (owner_id);
 
+-- Números extras que o admin soma a um perfil (famosos da campanha): seguidores
+-- e curtidas por publicação. Só o admin muda (Painel do admin → Números).
+alter table public.characters add column if not exists follower_bonus int not null default 0;
+alter table public.characters add column if not exists like_bonus int not null default 0;
+alter table public.characters drop constraint if exists characters_follower_bonus_ok;
+alter table public.characters add constraint characters_follower_bonus_ok
+  check (follower_bonus between 0 and 1000000000 and like_bonus between 0 and 100000000);
+
 create table if not exists public.follows (
   follower_id uuid not null references public.characters (id) on delete cascade,
   followee_id uuid not null references public.characters (id) on delete cascade,
@@ -1357,6 +1365,19 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
   from public.characters c where c.id = p_id;
 $$;
 
+-- Curtidas extras de um post (Painel do admin): a média do perfil, variando
+-- um pouco de post para post (sempre o mesmo número para o mesmo post)
+create or replace function public._like_bonus(p_post uuid)
+returns bigint language sql stable security invoker set search_path = '' as $$
+  select coalesce((
+    select case when c.like_bonus = 0 then 0 else round(
+      c.like_bonus * (0.6 + 0.8 * ((('x' || substr(md5(p.id::text), 1, 7))::bit(28)::int % 1000) / 1000.0))
+    )::bigint end
+    from public.posts p join public.characters c on c.id = p.character_id
+    where p.id = p_post
+  ), 0);
+$$;
+
 -- Card completo de um post
 create or replace function public._post_card(p_post uuid, p_viewer uuid)
 returns jsonb language sql stable security invoker set search_path = '' as $$
@@ -1379,7 +1400,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
       from public.post_tags t join public.characters tc on tc.id = t.character_id
       where t.post_id = p.id
     ), '[]'::jsonb),
-    'like_count', (select count(*) from public.likes l where l.post_id = p.id),
+    'like_count', (select count(*) from public.likes l where l.post_id = p.id) + public._like_bonus(p.id),
     'comment_count', (select count(*) from public.comments cm where cm.post_id = p.id),
     'liked', exists (select 1 from public.likes l where l.post_id = p.id and l.character_id = p_viewer),
     'saved', exists (select 1 from public.saves s where s.post_id = p.id and s.character_id = p_viewer),
@@ -1416,7 +1437,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'created_at', p.created_at,
     'thumb', (select coalesce(m.thumb_path, m.path) from public.post_media m where m.post_id = p.id order by m.position limit 1),
     'media_count', (select count(*) from public.post_media m where m.post_id = p.id),
-    'like_count', (select count(*) from public.likes l where l.post_id = p.id),
+    'like_count', (select count(*) from public.likes l where l.post_id = p.id) + public._like_bonus(p.id),
     'comment_count', (select count(*) from public.comments c where c.post_id = p.id)
   )
   from public.posts p where p.id = p_post;
@@ -1607,7 +1628,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'avatar_path', c.avatar_path, 'is_verified', c.is_verified,
     'owner_id', c.owner_id, 'created_at', c.created_at,
     'post_count', (select count(*) from public.posts p where p.character_id = c.id),
-    'follower_count', (select count(*) from public.follows f where f.followee_id = c.id),
+    'follower_count', (select count(*) from public.follows f where f.followee_id = c.id) + c.follower_bonus,
     'following_count', (select count(*) from public.follows f where f.follower_id = c.id),
     'is_following', exists (select 1 from public.follows f where f.follower_id = p_viewer and f.followee_id = c.id),
     'follows_you', exists (select 1 from public.follows f where f.follower_id = c.id and f.followee_id = p_viewer),
@@ -2228,7 +2249,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'display_name', p.display_name,
     'is_admin', p.is_admin,
     'push_prefs', p.push_prefs,
-    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost'),
+    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost', 'extras'),
     'characters', coalesce((
       select jsonb_agg(public._char(c.id) || jsonb_build_object('bio', c.bio, 'created_at', c.created_at) order by c.created_at)
       from public.characters c where c.owner_id = p.id
@@ -2260,7 +2281,7 @@ begin
         'created_at', p.created_at,
         'last_sign_in_at', u.last_sign_in_at,
         'characters', coalesce((
-          select jsonb_agg(public._char(c.id) order by c.created_at)
+          select jsonb_agg(public._char(c.id) || jsonb_build_object('follower_bonus', c.follower_bonus, 'like_bonus', c.like_bonus) order by c.created_at)
           from public.characters c where c.owner_id = p.id
         ), '[]'::jsonb)
       ) order by p.created_at)
@@ -2268,6 +2289,19 @@ begin
       left join auth.users u on u.id = p.id
     ), '[]'::jsonb)
   );
+end $$;
+
+-- Números extras de um perfil (seguidores e média de curtidas por post)
+create or replace function public.admin_set_boost(p_character uuid, p_followers int, p_likes int)
+returns void language plpgsql security definer set search_path = '' as $$
+begin
+  if not public.is_admin() then
+    raise exception 'Apenas administradores';
+  end if;
+  update public.characters
+  set follower_bonus = greatest(0, least(coalesce(p_followers, 0), 1000000000)),
+      like_bonus = greatest(0, least(coalesce(p_likes, 0), 100000000))
+  where id = p_character;
 end $$;
 
 create or replace function public.admin_set_invite_code(p_code text)
@@ -2385,7 +2419,7 @@ grant execute on function public.check_invite_code(text) to anon, authenticated;
 
 grant execute on function
   public.is_member(), public.is_admin(), public.owns_character(uuid), public.in_conversation(uuid),
-  public._char(uuid), public._post_card(uuid, uuid), public._post_thumb(uuid),
+  public._char(uuid), public._like_bonus(uuid), public._post_card(uuid, uuid), public._post_thumb(uuid),
   public.create_post(uuid, text, text, jsonb, uuid[], jsonb),
   public.feed(uuid, timestamptz, int), public.get_post(uuid, uuid), public.explore(timestamptz, int),
   public.character_posts(uuid, timestamptz, int), public.tagged_posts(uuid, timestamptz, int),
@@ -2399,7 +2433,7 @@ grant execute on function
   public.get_messages(uuid, timestamptz, timestamptz, int),
   public.start_conversation(uuid, uuid[], text), public.me(),
   public.admin_overview(), public.admin_set_invite_code(text), public.admin_set_admin(uuid, boolean),
-  public.admin_set_verified(uuid, boolean), public.admin_reset_password(uuid, text),
+  public.admin_set_verified(uuid, boolean), public.admin_reset_password(uuid, text), public.admin_set_boost(uuid, int, int),
   public.push_register(text, text, text, text, text), public.push_unregister(text),
   public.media_in_highlight(text), public._highlight(uuid, uuid),
   public.character_highlights(uuid, uuid, uuid), public.get_highlight(uuid, uuid),

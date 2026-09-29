@@ -1,16 +1,22 @@
 import { useState } from 'react';
-import { Copy, KeyRound, Shield, BadgeCheck } from 'lucide-react';
+import { Copy, KeyRound, Shield, BadgeCheck, TrendingUp } from 'lucide-react';
 import { TopBar, BackButton, Button, Spinner, ErrorBox, Handle, Sheet, useConfirm } from '../components/ui';
 import Avatar from '../components/Avatar';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
 import { useAsync } from '../lib/hooks';
 import { pageCache } from '../lib/storage';
-import { fullDate } from '../lib/format';
+import { count, fullDate } from '../lib/format';
 import * as api from '../lib/api';
 
+// valores prontos para os números extras
+const FOLLOWER_PRESETS = [0, 1000, 10000, 100000, 1000000];
+const LIKE_PRESETS = [0, 100, 1000, 10000, 100000];
+const toInt = (v) => Math.max(0, Math.floor(Number(String(v).replace(/\D/g, '')) || 0));
+
 export default function Admin() {
-  const { isAdmin, me } = useSession();
+  const { isAdmin, me, can } = useSession();
+  const [boostFor, setBoostFor] = useState(null); // { c, followers, likes }
   const toast = useToast();
   const confirm = useConfirm();
   const { data, loading, error, reload, mutate } = useAsync('admin', () => api.admin.overview(), []);
@@ -78,6 +84,28 @@ export default function Admin() {
       toast(!c.is_verified ? `@${c.handle} agora tem selo de verificado` : `Selo removido de @${c.handle}`);
     } catch (e) {
       toast(api.errorMessage(e));
+    }
+  };
+
+  const saveBoost = async () => {
+    const { c, followers, likes } = boostFor;
+    setBusy(true);
+    try {
+      await api.admin.setBoost(c.id, toInt(followers), toInt(likes));
+      pageCache.clear();
+      mutate((d) => ({
+        ...d,
+        players: d.players.map((p) => ({
+          ...p,
+          characters: p.characters.map((x) => (x.id === c.id ? { ...x, follower_bonus: toInt(followers), like_bonus: toInt(likes) } : x)),
+        })),
+      }));
+      toast(`Números de @${c.handle} atualizados`);
+      setBoostFor(null);
+    } catch (e) {
+      toast(api.errorMessage(e));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -152,7 +180,27 @@ export default function Admin() {
                     {p.characters.map((c) => (
                       <div key={c.id} className="player-char">
                         <Avatar character={c} size={32} />
-                        <Handle character={c} />
+                        <div className="player-char__name">
+                          <Handle character={c} />
+                          {(c.follower_bonus > 0 || c.like_bonus > 0) && (
+                            <span className="muted small">
+                              {c.follower_bonus > 0 && `+${count(c.follower_bonus)} seguidores`}
+                              {c.follower_bonus > 0 && c.like_bonus > 0 && ' · '}
+                              {c.like_bonus > 0 && `+${count(c.like_bonus)} curtidas/post`}
+                            </span>
+                          )}
+                        </div>
+                        {can('extras') && (
+                          <button
+                            type="button"
+                            className={`verify-toggle ${c.follower_bonus > 0 || c.like_bonus > 0 ? 'is-on' : ''}`}
+                            onClick={() => setBoostFor({ c, followers: String(c.follower_bonus || 0), likes: String(c.like_bonus || 0) })}
+                            aria-label={`Números extras de @${c.handle}`}
+                            title="Números extras (seguidores e curtidas)"
+                          >
+                            <TrendingUp size={20} />
+                          </button>
+                        )}
                         <button
                           type="button"
                           className={`verify-toggle ${c.is_verified ? 'is-on' : ''}`}
@@ -184,6 +232,55 @@ export default function Admin() {
           </section>
         </>
       )}
+
+      <Sheet open={!!boostFor} onClose={() => setBoostFor(null)} title={boostFor ? `Números de @${boostFor.c.handle}` : ''}>
+        {boostFor && (
+          <div className="pad-x pad-y form boost-form">
+            <p className="muted small">
+              Somam aos números de verdade, para um perfil parecer famoso. Ninguém mais vê que são extras, e as listas de quem segue e de quem curtiu
+              continuam mostrando só os personagens de verdade.
+            </p>
+            <label className="boost-form__label" htmlFor="boost-followers">
+              Seguidores extras
+            </label>
+            <input
+              id="boost-followers"
+              className="input"
+              inputMode="numeric"
+              value={boostFor.followers}
+              onChange={(e) => setBoostFor((b) => ({ ...b, followers: e.target.value.replace(/\D/g, '') }))}
+            />
+            <div className="boost-form__chips">
+              {FOLLOWER_PRESETS.map((v) => (
+                <button key={v} type="button" className={toInt(boostFor.followers) === v ? 'is-on' : ''} onClick={() => setBoostFor((b) => ({ ...b, followers: String(v) }))}>
+                  {v ? `+${count(v)}` : 'Nenhum'}
+                </button>
+              ))}
+            </div>
+            <label className="boost-form__label" htmlFor="boost-likes">
+              Curtidas extras por publicação (média)
+            </label>
+            <input
+              id="boost-likes"
+              className="input"
+              inputMode="numeric"
+              value={boostFor.likes}
+              onChange={(e) => setBoostFor((b) => ({ ...b, likes: e.target.value.replace(/\D/g, '') }))}
+            />
+            <div className="boost-form__chips">
+              {LIKE_PRESETS.map((v) => (
+                <button key={v} type="button" className={toInt(boostFor.likes) === v ? 'is-on' : ''} onClick={() => setBoostFor((b) => ({ ...b, likes: String(v) }))}>
+                  {v ? `+${count(v)}` : 'Nenhuma'}
+                </button>
+              ))}
+            </div>
+            <p className="muted small">Cada publicação ganha perto dessa média (varia um pouco de uma para outra, para parecer natural). Vale também para as antigas.</p>
+            <Button className="btn--block" loading={busy} onClick={saveBoost}>
+              Salvar
+            </Button>
+          </div>
+        )}
+      </Sheet>
 
       <Sheet open={!!resetFor} onClose={() => setResetFor(null)} title={resetFor ? `Nova senha para ${resetFor.display_name}` : ''}>
         <div className="pad-x pad-y form">

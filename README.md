@@ -27,7 +27,7 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 - Selo de verificado, dado pelo admin
 - Modo escuro
 - Cadastro só com código de convite
-- Painel do admin: trocar o convite, ver jogadores, redefinir senhas, dar selos e apagar qualquer publicação
+- Painel do admin: trocar o convite, ver jogadores, redefinir senhas, dar selos, inflar os números de um perfil famoso e apagar qualquer publicação
 
 ## Como funciona
 
@@ -133,6 +133,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-reacoes.sql` | Reações nos stories, nos destaques e nas mensagens do Direct (rode depois da de interações) |
 | `2026-09-figurinhas.sql` | Figurinhas no Direct e nos comentários, e fotos nos comentários (rode depois da de reações) |
 | `2026-09-repost.sql` | Repostar o story em que você foi marcado (rode depois da de figurinhas) |
+| `2026-09-numeros-extras.sql` | Números extras (seguidores e curtidas) no Painel do admin (rode depois da de repost) |
 
 ## Notificações no celular
 
@@ -256,6 +257,7 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 - **Responder uma mensagem no Direct:** arraste a mensagem para a direita, ou segure o dedo nela e toque em **Responder**. A resposta mostra a mensagem citada, e tocar na citação leva até a original, mesmo que seja antiga. Quem foi respondido recebe a notificação "respondeu você".
 - **Esqueceu a senha:** o admin redefine em **Painel do admin** → **Redefinir senha** e passa a senha nova para a pessoa, que pode trocá-la depois em Configurações.
 - **Selo de verificado:** no Painel do admin, toque no selo ao lado do personagem.
+- **Perfil famoso (números extras):** no Painel do admin, toque no ícone de gráfico ao lado do personagem. **Seguidores extras** soma ao número de seguidores do perfil, e **Curtidas extras por publicação** soma perto dessa média em cada post dele (varia um pouco de um para outro, para parecer natural, e vale também para os antigos). Ninguém vê que são extras; as listas de quem segue e de quem curtiu continuam só com os personagens de verdade. Para voltar ao normal, escolha **Nenhum** e **Nenhuma**.
 - **Tirar alguém do grupo:** no Supabase, abra **Authentication** → **Users** e apague o usuário. Tudo o que ele publicou some junto. Depois troque o código de convite.
 - **Contas novas só pelo app.** Criar usuário direto pelo painel do Supabase dá erro de propósito, porque não passa pelo código de convite.
 - **Se uma tela der erro:** aparece o aviso "Algo deu errado nesta tela" com **Tentar de novo** e **Recarregar**, em vez de a tela ficar toda preta. O texto pequeno embaixo diz qual foi o erro; tire um print dele para descobrir a causa. Se o aviso for "Saiu uma versão nova do FargusGram", é só tocar em **Recarregar**.

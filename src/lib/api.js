@@ -38,6 +38,8 @@ export function errorMessage(err) {
     ((code === 'PGRST204' || code === '42703') && /thumb_path|note_body/.test(msg))
   )
     return 'O banco ainda não tem a atualização de destaques e notas. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-destaques-notas.sql no SQL Editor do Supabase (veja o README).';
+  if (code === 'PGRST202' && /admin_set_boost/.test(msg))
+    return 'O banco ainda não tem a atualização de números extras. Rode o arquivo supabase/atualizacoes/2026-09-numeros-extras.sql no SQL Editor do Supabase (veja o README).';
   if (code === 'PGRST202' && /story_for_repost/.test(msg))
     return 'O banco ainda não tem a atualização de repostar stories. O admin precisa rodar o arquivo supabase/atualizacoes/2026-09-repost.sql no SQL Editor do Supabase (veja o README).';
   if (((code === 'PGRST205' || code === '42P01') && /stickers/.test(msg)) || ((code === 'PGRST204' || code === '42703') && /media_kind|media_path/.test(msg)))
@@ -448,6 +450,8 @@ export const admin = {
   setAdmin: (player, value) => rpc('admin_set_admin', { p_player: player, p_value: value }),
   setVerified: (character, value) => rpc('admin_set_verified', { p_character: character, p_value: value }),
   resetPassword: (player, password) => rpc('admin_reset_password', { p_player: player, p_password: password }),
+  // números extras de um perfil (só com o banco atualizado: extras)
+  setBoost: (character, followers, likes) => rpc('admin_set_boost', { p_character: character, p_followers: followers, p_likes: likes }),
 };
 
 // ---------------------------------------------------------------------

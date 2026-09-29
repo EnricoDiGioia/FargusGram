@@ -5524,3 +5524,34 @@ img[data-fade][data-shown] {
   font-weight: 700;
   font-size: 13px;
 }
+
+/* ---------- números extras (Painel do admin) ---------- */
+.player-char__name {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.boost-form__label {
+  font-weight: 600;
+  font-size: 14px;
+  margin-top: 4px;
+}
+.boost-form__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.boost-form__chips button {
+  height: 30px;
+  padding: 0 12px;
+  border-radius: 15px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.boost-form__chips button.is-on {
+  background: var(--accent);
+  color: var(--on-accent);
+}
