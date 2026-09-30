@@ -26,7 +26,8 @@ function PostsTab({ kind, character }) {
     tagged: (b) => api.taggedPosts(character.id, b),
     saved: (b) => api.savedPosts(character.id, b),
   }[kind];
-  const list = useInfinite(key, fetcher, { pageSize: 30, getCursor: (it) => it.saved_at || it.created_at });
+  const getCursor = (it) => it.saved_at || it.created_at;
+  const list = useInfinite(key, fetcher, { pageSize: 30, getCursor });
   const sentinel = useOnVisible(list.loadMore, !list.done && !list.loading && list.items.length > 0);
 
   useEffect(() => {
@@ -72,7 +73,7 @@ function PostsTab({ kind, character }) {
   }
   return (
     <>
-      <PostGrid posts={list.items} />
+      <PostGrid posts={list.items} source={{ key, fetch: fetcher, getCursor, pageSize: 30, done: list.done }} />
       {list.loading && (
         <div className="center-pad">
           <Spinner />

@@ -280,6 +280,7 @@ Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, f
 
 ## No dia a dia
 
+- **Ver as próximas publicações:** tocando num post da grade de um perfil (ou dos marcados, salvos, reels, do Explorar ou de uma hashtag), é só rolar para baixo para ver os seguintes, na mesma ordem da grade, como no Instagram.
 - **Trocar de personagem:** segure o ícone do perfil na barra de baixo, ou toque no seu @ no topo do perfil.
 - **Criar NPC:** na troca de personagem, toque em **Criar novo personagem**.
 - **Responder uma mensagem no Direct:** arraste a mensagem para a direita, ou segure o dedo nela e toque em **Responder**. A resposta mostra a mensagem citada, e tocar na citação leva até a original, mesmo que seja antiga. Quem foi respondido recebe a notificação "respondeu você".

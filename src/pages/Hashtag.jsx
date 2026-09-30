@@ -26,7 +26,7 @@ export default function Hashtag() {
       {list.items.length === 0 && list.loading && <GridSkeleton />}
       {list.error && <ErrorBox onRetry={list.reload}>{list.error}</ErrorBox>}
       {!list.loading && !list.error && list.items.length === 0 && <EmptyState title="Nenhuma publicação">Ninguém usou essa hashtag ainda.</EmptyState>}
-      <PostGrid posts={list.items} />
+      <PostGrid posts={list.items} source={{ key, fetch: (b) => api.hashtagPosts(tag, b), getCursor: (it) => it.created_at, pageSize: 30, done: list.done }} />
       {list.loading && list.items.length > 0 && (
         <div className="center-pad">
           <Spinner />

@@ -3,12 +3,20 @@ import { Copy, Heart, MessageCircle, Clapperboard } from 'lucide-react';
 import { mediaUrl } from '../lib/supabase';
 import { count } from '../lib/format';
 import { fadeIn } from '../lib/fade';
+import { rememberList } from '../lib/postLists';
 
-export default function PostGrid({ posts }) {
+// source: { key, fetch, getCursor, pageSize, done } — de onde vêm os posts (para a
+// página do post mostrar os próximos da mesma lista)
+export default function PostGrid({ posts, source }) {
   return (
     <div className="grid">
       {posts.map((p) => (
-        <Link key={p.id} to={`/p/${p.id}`} className="grid__cell" aria-label={p.video && p.media_count <= 1 ? 'Abrir reel' : 'Abrir publicação'}>
+        <Link
+          key={p.id}
+          to={`/p/${p.id}`}
+          state={source ? { list: source.key } : undefined}
+          onClick={() => source && rememberList(source.key, { ...source, items: posts })}
+          className="grid__cell" aria-label={p.video && p.media_count <= 1 ? 'Abrir reel' : 'Abrir publicação'}>
           {p.thumb && <img {...fadeIn} src={mediaUrl(p.thumb)} alt="" loading="lazy" decoding="async" draggable="false" />}
           {p.media_count > 1 ? (
             <span className="grid__multi" aria-hidden="true">

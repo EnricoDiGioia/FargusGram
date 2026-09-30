@@ -193,7 +193,7 @@ export default function Explore() {
           {!list.loading && !list.error && list.items.length === 0 && (
             <EmptyState title="Nada por aqui ainda">Quando alguém publicar, as fotos aparecem aqui.</EmptyState>
           )}
-          <PostGrid posts={list.items} />
+          <PostGrid posts={list.items} source={{ key, fetch: (b) => api.explore(b), getCursor: (it) => it.created_at, pageSize: 30, done: list.done }} />
           {list.loading && list.items.length > 0 && (
             <div className="center-pad">
               <Spinner />
