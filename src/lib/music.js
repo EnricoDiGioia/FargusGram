@@ -7,6 +7,8 @@
 // Existe um único <audio> no app inteiro, então só uma música toca por vez.
 // Quem quer tocar algo faz um "pedido" (request) com uma chave; o pedido mais
 // recente ganha. Quando ele é liberado (release), volta a tocar o anterior.
+// Vídeos com som entram na mesma fila como pedidos "de fora" (external): o
+// <audio> para e quem tem o vídeo liga o som dele (lib/videoHost.js).
 import { useSyncExternalStore } from 'react';
 import { local } from './storage';
 
@@ -97,7 +99,7 @@ export function formatTime(s) {
 // ---------------------------------------------------------------------
 let el = null;
 let counter = 0;
-const requests = new Map(); // chave -> { clip, loop, held, at }
+const requests = new Map(); // chave -> { clip, loop, held, at, external, onRetry, blocked }
 let current = null; // chave carregada no <audio>
 let currentClip = null;
 let status = 'idle'; // idle | loading | playing | paused | blocked | error
@@ -223,6 +225,15 @@ function sync() {
     return;
   }
   const { key, r } = top;
+  if (r.external) {
+    // o som é de um vídeo: a música para e o vídeo decide o resto
+    if (a && !a.paused) a.pause();
+    ++playSeq;
+    current = key;
+    currentClip = null;
+    setStatus(!soundOn || document.hidden || r.held ? 'paused' : r.blocked ? 'blocked' : 'playing');
+    return;
+  }
   const changed = key !== current || !sameClip(r.clip, currentClip);
   if (!soundOn || document.hidden) {
     if (a && !a.paused) a.pause();
@@ -261,6 +272,24 @@ export const player = {
     requests.set(key, { clip, loop, held: r ? r.held : held, at: r?.at ?? ++counter });
     sync();
   },
+  // Som vindo de outro lugar (um vídeo). onRetry é chamado durante um toque,
+  // para o vídeo tentar tocar com som quando o navegador tinha bloqueado.
+  requestExternal(key, { onRetry, held = false } = {}) {
+    const r = requests.get(key);
+    if (r?.external) {
+      r.onRetry = onRetry;
+      return;
+    }
+    requests.set(key, { clip: null, loop: true, held, at: r?.at ?? ++counter, external: true, onRetry, blocked: false });
+    sync();
+  },
+  // O navegador não deixou o vídeo tocar com som (precisa de um toque)
+  setBlocked(key, blocked) {
+    const r = requests.get(key);
+    if (!r?.external || r.blocked === blocked) return;
+    r.blocked = blocked;
+    sync();
+  },
   // Traz um pedido para a frente (ex.: o post que acabou de aparecer na tela)
   focus(key) {
     const r = requests.get(key);
@@ -291,8 +320,20 @@ export const player = {
       player.setSound(true);
       return;
     }
-    if (current && currentClip && requests.has(current) && !requests.get(current).held) startPlaying();
+    const r = current && requests.get(current);
+    if (r?.external) {
+      r.blocked = false;
+      r.onRetry?.();
+      sync();
+      return;
+    }
+    if (current && currentClip && r && !r.held) startPlaying();
     else sync();
+  },
+  // Vídeo pode tocar com som agora? (é o pedido da vez, som ligado, sem bloqueio)
+  audible(key) {
+    const r = requests.get(key);
+    return !!r && current === key && soundOn && !r.held && !r.blocked && !document.hidden;
   },
   time() {
     return el ? el.currentTime : 0;
@@ -355,6 +396,15 @@ function onGesture(e) {
   // o botão de som resolve sozinho (senão ligaria e desligaria no mesmo toque)
   if (e.target?.closest?.('[data-sound-btn]')) return;
   const top = latest();
+  if (top?.r.external) {
+    // vídeo bloqueado: o toque libera o som dele
+    if (top.r.blocked && soundOn && !top.r.held) {
+      top.r.blocked = false;
+      top.r.onRetry?.();
+      sync();
+    }
+    return;
+  }
   if ((status === 'blocked' || status === 'error') && top && top.key === current && soundOn && !top.r.held) {
     startPlaying();
     return;

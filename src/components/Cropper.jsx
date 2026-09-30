@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { ClipVideo } from './VideoEditParts';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -30,7 +31,7 @@ function clampState(image, aspect, s) {
   return { z, cx: r.sx + r.sw / 2, cy: r.sy + r.sh / 2 };
 }
 
-// Moldura com a foto: arraste para posicionar, pinça (ou roda do mouse) para zoom
+// Moldura com a foto (ou vídeo): arraste para posicionar, pinça (ou roda do mouse) para zoom
 export default function Cropper({ image, aspect, value, onChange, filter = 'none', round = false, grid = true, className = '' }) {
   const frame = useRef(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
@@ -131,7 +132,7 @@ export default function Cropper({ image, aspect, value, onChange, filter = 'none
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
     >
-      <img src={image.url} alt="" draggable="false" style={style} />
+      {image.video ? <ClipVideo clip={image} muted={image.previewMuted !== false} style={style} /> : <img src={image.url} alt="" draggable="false" style={style} />}
       {grid && dragging && <div className="cropper__grid" />}
       {round && <div className="cropper__round-mask" />}
     </div>

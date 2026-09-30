@@ -591,3 +591,106 @@ export async function renderSticker(img, crop, opts) {
   releaseCanvas(canvas);
   return { blob, width: STICKER_SIZE, height: STICKER_SIZE };
 }
+
+// ---------------------------------------------------------------------
+// Vídeo: cada quadro é montado com as mesmas contas da foto (recorte, filtro,
+// camadas). Quem comprime é lib/videoEdit.js. O que fica parado (fundo,
+// textos, fotos por cima) é desenhado uma vez só e reaproveitado.
+// ---------------------------------------------------------------------
+async function layersCanvas(layers, W, H, background) {
+  if (!layers?.length && !background) return null;
+  const c = newCanvas(W, H);
+  const ctx = c.getContext('2d');
+  if (background) background(ctx);
+  await drawLayers(ctx, layers, W, H);
+  return c;
+}
+
+// Publicação: recorte + filtro + camadas por cima. crop em pixels do vídeo.
+export async function postVideoComposer({ crop, filterId = 'normal', layers, width: W, height: H }) {
+  const over = await layersCanvas(layers, W, H);
+  const filtered = !!FILTERS.find((f) => f.id === filterId)?.ops.length;
+  return {
+    readsPixels: filtered,
+    compose(ctx, frame) {
+      ctx.fillStyle = '#000';
+      ctx.fillRect(0, 0, W, H);
+      ctx.imageSmoothingQuality = 'high';
+      frame.draw(ctx, crop.sx, crop.sy, crop.sw, crop.sh, 0, 0, W, H);
+      if (filtered) applyFilter(ctx, W, H, filterId);
+      if (over) ctx.drawImage(over, 0, 0);
+    },
+    release: () => over && releaseCanvas(over),
+  };
+}
+
+// Story: fundo (degradê) + camadas de trás + o vídeo (na posição da camada
+// dele) + camadas da frente + adesivo da música (em pixels do story de 1080)
+export async function storyVideoComposer({ gradient, layers, stickers, width: W, height: H }) {
+  const video = layers.find((l) => l.kind === 'photo' && l.image?.video);
+  const vz = video.z || 0;
+  const rest = layers.filter((l) => l !== video);
+  const [a, b] = gradient || STORY_BACKGROUNDS[0];
+  const under = await layersCanvas(
+    rest.filter((l) => (l.z || 0) < vz),
+    W,
+    H,
+    (ctx) => {
+      const g = ctx.createLinearGradient(0, 0, W, H);
+      g.addColorStop(0, a);
+      g.addColorStop(1, b);
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H);
+    }
+  );
+  const k = W / STORY_W;
+  const front = rest.filter((l) => (l.z || 0) >= vz);
+  // camadas da frente e, por cima de tudo, o adesivo da música (como na foto)
+  const over =
+    front.length || stickers?.length
+      ? await (async () => {
+          const c = (await layersCanvas(front, W, H)) || newCanvas(W, H);
+          const cx = c.getContext('2d');
+          for (const st of stickers || []) {
+            cx.drawImage(st.canvas, st.x * W - (st.canvas.width * k) / 2, st.y * H - (st.canvas.height * k) / 2, st.canvas.width * k, st.canvas.height * k);
+          }
+          return c;
+        })()
+      : null;
+  const w = video.w * W;
+  const h = w * (video.image.height / video.image.width);
+  // vídeo por cima (story repostado): cantos arredondados, sombra e o @ (como a foto)
+  const r = layerRadius(video, w, h);
+  const sk = (W / LAYER_REF_W) * (video.scale || 1);
+  return {
+    readsPixels: false,
+    compose(ctx, frame) {
+      ctx.drawImage(under, 0, 0);
+      ctx.save();
+      ctx.translate(video.x * W, video.y * H);
+      ctx.rotate(video.rot || 0);
+      ctx.scale(video.scale || 1, video.scale || 1);
+      ctx.imageSmoothingQuality = 'high';
+      if (video.base) frame.draw(ctx, 0, 0, frame.width, frame.height, -w / 2, -h / 2, w, h);
+      else {
+        ctx.save();
+        ctx.shadowColor = 'rgba(0,0,0,0.35)';
+        ctx.shadowBlur = 24 * sk;
+        ctx.shadowOffsetY = 6 * sk;
+        roundRect(ctx, -w / 2, -h / 2, w, h, r);
+        ctx.fillStyle = '#000';
+        ctx.fill();
+        ctx.restore();
+        ctx.save();
+        roundRect(ctx, -w / 2, -h / 2, w, h, r);
+        ctx.clip();
+        frame.draw(ctx, 0, 0, frame.width, frame.height, -w / 2, -h / 2, w, h);
+        ctx.restore();
+        if (video.repost) drawRepostBadge(ctx, video, w, h);
+      }
+      ctx.restore();
+      if (over) ctx.drawImage(over, 0, 0);
+    },
+    release: () => [under, over].forEach((c) => c && releaseCanvas(c)),
+  };
+}

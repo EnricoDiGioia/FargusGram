@@ -1444,6 +1444,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'created_at', p.created_at,
     'thumb', (select coalesce(m.thumb_path, m.path) from public.post_media m where m.post_id = p.id order by m.position limit 1),
     'media_count', (select count(*) from public.post_media m where m.post_id = p.id),
+    'video', coalesce((select m.path like '%.mp4' from public.post_media m where m.post_id = p.id order by m.position limit 1), false),
     'like_count', (select count(*) from public.likes l where l.post_id = p.id) + public._like_bonus(p.id),
     'comment_count', (select count(*) from public.comments c where c.post_id = p.id)
   )
@@ -1557,6 +1558,34 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
   from (
     select p.id, p.created_at from public.posts p
     where p.character_id = p_character and (p_before is null or p.created_at < p_before)
+    order by p.created_at desc
+    limit least(greatest(coalesce(p_limit, 30), 1), 60)
+  ) q;
+$$;
+
+-- Reels: publicações com um vídeo só (de todo mundo, as mais novas primeiro)
+create or replace function public.reels(p_viewer uuid, p_before timestamptz default null, p_limit int default 6)
+returns jsonb language sql stable security invoker set search_path = '' as $$
+  select coalesce(jsonb_agg(public._post_card(q.id, p_viewer) order by q.created_at desc), '[]'::jsonb)
+  from (
+    select p.id, p.created_at from public.posts p
+    where (p_before is null or p.created_at < p_before)
+      and (select count(*) from public.post_media m where m.post_id = p.id) = 1
+      and exists (select 1 from public.post_media m where m.post_id = p.id and m.path like '%.mp4')
+    order by p.created_at desc
+    limit least(greatest(coalesce(p_limit, 6), 1), 30)
+  ) q;
+$$;
+
+-- Aba "Reels" do perfil
+create or replace function public.character_reels(p_character uuid, p_before timestamptz default null, p_limit int default 30)
+returns jsonb language sql stable security invoker set search_path = '' as $$
+  select coalesce(jsonb_agg(public._post_thumb(q.id) order by q.created_at desc), '[]'::jsonb)
+  from (
+    select p.id, p.created_at from public.posts p
+    where p.character_id = p_character and (p_before is null or p.created_at < p_before)
+      and (select count(*) from public.post_media m where m.post_id = p.id) = 1
+      and exists (select 1 from public.post_media m where m.post_id = p.id and m.path like '%.mp4')
     order by p.created_at desc
     limit least(greatest(coalesce(p_limit, 30), 1), 60)
   ) q;
@@ -2257,7 +2286,7 @@ returns jsonb language sql stable security invoker set search_path = '' as $$
     'is_admin', p.is_admin,
     'push_prefs', p.push_prefs,
     'appearance', p.appearance,
-    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost', 'extras', 'temas'),
+    'features', jsonb_build_array('destaques', 'notas', 'melhores_amigos', 'interacoes', 'reacoes', 'figurinhas', 'repost', 'extras', 'temas', 'videos'),
     'characters', coalesce((
       select jsonb_agg(public._char(c.id) || jsonb_build_object('bio', c.bio, 'created_at', c.created_at) order by c.created_at)
       from public.characters c where c.owner_id = p.id
@@ -2431,6 +2460,7 @@ grant execute on function
   public.create_post(uuid, text, text, jsonb, uuid[], jsonb),
   public.feed(uuid, timestamptz, int), public.get_post(uuid, uuid), public.explore(timestamptz, int),
   public.character_posts(uuid, timestamptz, int), public.tagged_posts(uuid, timestamptz, int),
+  public.reels(uuid, timestamptz, int), public.character_reels(uuid, timestamptz, int),
   public.saved_posts(uuid, timestamptz, int), public.hashtag_posts(text, timestamptz, int),
   public.search_characters(text, uuid), public.search_hashtags(text),
   public.profile(text, uuid), public.follow_list(uuid, uuid, text), public.post_likers(uuid, uuid),
@@ -2453,12 +2483,12 @@ to authenticated;
 
 
 -- ---------------------------------------------------------------------
--- 9. Fotos (Storage): bucket público "media"
+-- 9. Fotos e vídeos (Storage): bucket público "media"
 --    Cada jogador só envia arquivos para a própria pasta.
 -- ---------------------------------------------------------------------
 
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-values ('media', 'media', true, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'image/gif'])
+values ('media', 'media', true, 10485760, array['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'video/mp4'])
 on conflict (id) do update
   set public = excluded.public,
       file_size_limit = excluded.file_size_limit,
@@ -2968,7 +2998,7 @@ begin
   if s.expires_at <= now() then
     raise exception 'Esse story já saiu do ar';
   end if;
-  return jsonb_build_object('id', s.id, 'path', s.path, 'width', s.width, 'height', s.height, 'character', public._char(s.character_id));
+  return jsonb_build_object('id', s.id, 'path', s.path, 'thumb_path', s.thumb_path, 'width', s.width, 'height', s.height, 'character', public._char(s.character_id));
 end $$;
 
 -- Aviso no celular: quem fez o story original fica sabendo do repost

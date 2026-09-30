@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router';
-import { Send, Camera } from 'lucide-react';
+import { Send, Camera, Heart } from 'lucide-react';
 import { TopBar, IconButton, Spinner, EmptyState, ErrorBox } from '../components/ui';
 import { Wordmark } from '../components/Brand';
 import PostCard from '../components/PostCard';
@@ -41,8 +41,8 @@ function Suggestions() {
 }
 
 export default function Home() {
-  const { active } = useSession();
-  const { messages } = useUnread(active.id);
+  const { active, can } = useSession();
+  const { messages, notifications } = useUnread(active.id);
   const navigate = useNavigate();
   const [trayKey, setTrayKey] = useState(0);
   const key = `feed:${active.id}`;
@@ -80,6 +80,12 @@ export default function Home() {
             <IconButton label="Novo story" onClick={() => navigate('/criar/story')}>
               <Camera size={25} strokeWidth={1.8} />
             </IconButton>
+            {/* com Reels na barra de baixo, a atividade fica aqui em cima */}
+            {can('videos') && (
+              <IconButton label="Atividade" onClick={() => navigate('/atividade')} badge={notifications > 0}>
+                <Heart size={25} strokeWidth={1.8} />
+              </IconButton>
+            )}
             <IconButton label="Direct" onClick={() => navigate('/direct')} badge={messages || 0}>
               <Send size={24} strokeWidth={1.8} />
             </IconButton>

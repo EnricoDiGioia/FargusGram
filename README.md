@@ -6,7 +6,9 @@ A rede social dos personagens da campanha Fargus. Funciona no navegador e se ins
 
 ## O que tem
 
-- Feed com publicações de até 10 fotos, com recorte e filtros
+- Feed com publicações de até 10 fotos ou vídeos, com recorte e filtros
+- Vídeos de até 15 segundos nos posts, nos stories e nos reels, cortados e comprimidos no próprio celular
+- Reels: vídeos em pé, um por tela, com som, curtida com dois toques e aba própria no perfil
 - Curtir com toque duplo, comentar e responder comentários (com foto ou figurinha), salvar e mandar no Direct
 - Figurinhas como as do WhatsApp: crie com as suas fotos, salve as que mandarem e use no Direct e nos comentários
 - Reações com emoji nos comentários, nas mensagens do Direct, nos stories e nos destaques; até 3 comentários fixados pelo dono do post
@@ -135,6 +137,7 @@ Esses arquivos não apagam nada e podem ser rodados mais de uma vez sem problema
 | `2026-09-repost.sql` | Repostar o story em que você foi marcado (rode depois da de figurinhas) |
 | `2026-09-numeros-extras.sql` | Números extras (seguidores e curtidas) no Painel do admin (rode depois da de repost) |
 | `2026-09-temas.sql` | Temas guardados na conta, para valerem em todos os aparelhos (rode depois da de números extras) |
+| `2026-09-videos.sql` | Vídeos nos posts, nos stories e nos reels (rode depois da de temas) |
 
 ## Notificações no celular
 
@@ -251,6 +254,20 @@ Cada personagem tem a sua lista de **Melhores amigos**, e só o dono sabe quem e
 - **Destaques:** um story de Melhores amigos que estiver num destaque continua só para a lista. Se o destaque só tiver stories assim, quem está fora da lista nem vê o destaque.
 - Tirar alguém da lista vale na hora, inclusive para os stories e destaques antigos.
 
+## Vídeos e reels
+
+Posts, stories e reels aceitam vídeo. Para caber no plano grátis, o próprio celular corta e comprime cada vídeo antes de enviar.
+
+- **Até 15 segundos.** Vídeo mais longo abre direto a tela de corte: arraste as pontas ou o trecho para escolher. Depois, a tesoura (✂) no editor abre o corte de novo.
+- **Pequeno:** 540 pixels de largura e cerca de 0,7 Mbps. Um vídeo de 15 s fica com 1 a 1,5 MB (uma foto tem uns 300 KB). Junto vai uma foto do primeiro quadro, que aparece nas miniaturas e enquanto o vídeo carrega.
+- **Publicação:** escolha fotos e vídeos juntos (até 3 vídeos por publicação). O vídeo pode ser enquadrado e ganhar filtro e textos por cima, como as fotos. Ao compartilhar aparece "Preparando o vídeo" com a porcentagem; num celular recente leva alguns segundos.
+- **Story:** no quadradinho da galeria, escolha um vídeo. Ele entra como a foto do story: dá para mover, girar, mudar o tamanho e colocar textos, figurinhas e música por cima. O story dura o tempo do vídeo, e segurar o dedo pausa. Repostar um story em vídeo em que você foi marcado mantém o vídeo.
+- **Reels:** um vídeo em pé, sozinho. Crie pelo **+** → **Reel** ou pela câmera na tela de Reels. Os reels de todo mundo ficam no ícone de claquete da barra de baixo, um por tela: arraste para cima para ver o próximo, toque para ligar ou desligar o som, segure para pausar e toque duas vezes para curtir. No perfil, a aba de claquete mostra os reels do personagem. Eles também aparecem no feed, como as outras publicações.
+- **Som:** o vídeo vai com o som dele, a não ser que você toque no alto-falante (no editor ou no corte) para tirar. Se escolher uma música, o vídeo vai sem o som dele e a música toca no lugar. No feed, o vídeo que está na tela toca sozinho; toque nele (ou no alto-falante) para ligar ou desligar o som. No iPhone, o som só começa depois de um toque: nos stories e nos reels aparece "Toque para ouvir"; no feed, toque no vídeo ou no alto-falante.
+- **O coração mudou de lugar:** com os vídeos ligados, a claquete dos Reels fica no lugar do coração na barra de baixo, e o coração (atividade) vai para o topo do feed, ao lado do Direct, como no Instagram.
+- **Celulares:** preparar vídeo precisa de um navegador recente: iPhone com iOS 16.4 ou mais novo, Chrome no Android e no computador. Num navegador sem suporte aparece um aviso. Assistir funciona em qualquer um.
+- Sem a atualização `2026-09-videos.sql`, o app continua só com fotos, como antes.
+
 ## Temas
 
 Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, fundo e um papel de parede atrás das telas.
@@ -277,7 +294,8 @@ Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, f
 
 - **Fotos:** o Supabase grátis tem 1 GB. Figurinhas, fotos dos comentários e fotos de papel de parede também contam, mas são pequenas (a foto de um tema apagado sai do bucket junto). O app comprime cada foto no próprio celular antes de enviar (cerca de 200 a 400 KB), então cabem alguns milhares. Stories vencidos ficam 30 dias no arquivo e depois são apagados, liberando espaço; só os que estão em destaques ficam guardados.
 - **Banco:** 500 MB, que é muito para textos, curtidas e mensagens.
-- **Tráfego:** 5 GB por mês. As fotos já vistas ficam guardadas no celular, o que economiza bastante.
+- **Tráfego:** 5 GB por mês. As fotos e os vídeos já vistos ficam guardados no celular, o que economiza bastante.
+- **Vídeos:** são o que mais pesa. Cada vídeo de 15 s ocupa de 1 a 1,5 MB do 1 GB (os stories em vídeo também saem depois dos 30 dias no arquivo, a não ser os que estão em destaques). No tráfego, só o vídeo que está na tela é baixado, uma vez por aparelho, e os 50 mais recentes ficam guardados no celular; os 5 GB do mês dão para uns 3 mil vídeos assistidos.
 - **Música:** não conta em nenhum desses limites, porque o áudio vem direto do Apple Music.
 - **Notificações:** cada curtida, comentário ou mensagem chama a função `push` uma vez. O plano grátis tem 500 mil chamadas por mês, bem mais do que um grupo de amigos usa.
 - **Pausa por falta de uso:** o Supabase pausa projetos grátis depois de 7 dias sem uso. O robô "Manter o Supabase acordado" (`.github/workflows/keepalive.yml`) faz uma consulta a cada 3 dias para evitar isso. O GitHub desliga robôs agendados em repositórios públicos depois de 60 dias sem commits. Se acontecer, abra **Actions** → "Manter o Supabase acordado" → **Enable workflow**. Se o projeto pausar mesmo assim, entre no painel do Supabase e clique em **Restore project**. Os dados continuam lá.
@@ -285,7 +303,7 @@ Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, f
 ## Privacidade
 
 - Publicações, perfis, comentários e mensagens só aparecem para quem entrou com o código de convite.
-- As fotos ficam num bucket público do Supabase. O endereço de cada foto é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
+- As fotos e os vídeos ficam num bucket público do Supabase. O endereço de cada arquivo é longo e aleatório, mas quem tiver o link consegue abrir. Não publique nada sensível.
 - Os e-mails dos jogadores só aparecem para os admins.
 - Reações a stories e destaques só o dono do story vê (e cada um vê a própria). Reações às mensagens, só quem está na conversa.
 - Respostas das caixinhas de perguntas e quem votou em cada opção das enquetes só o dono do story vê. Os outros veem só as porcentagens, e só depois de votar.
@@ -311,10 +329,8 @@ Em **Configurações** → **Temas** dá para mudar a cara do app todo: cores, f
 | `src/lib/` | Conexão com o Supabase, processamento de imagens, música e utilidades |
 | `src/styles/app.css` | Visual (cores, claro e escuro) |
 | `src/lib/theme.js` | Temas prontos e as contas das cores de cada tema |
+| `src/lib/videoEdit.js` | Cortar, montar e comprimir os vídeos no celular (biblioteca Mediabunny, só carregada quando alguém escolhe um vídeo) |
+| `src/lib/videoHost.js` | O único player de vídeo do app, que passa de um post para outro |
 | `public/` | Ícones, manifesto de instalação e service worker (cache) |
 | `.github/workflows/` | Publicação automática e robô contra a pausa |
 | `scripts/keepalive.mjs` | Consulta usada pelo robô |
-
-## Ideias para depois
-
-- Vídeos curtos (ocupam bastante do 1 GB grátis)

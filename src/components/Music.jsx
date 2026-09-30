@@ -31,6 +31,23 @@ export function useMusicInView(ref, key, music) {
   }, [key, src, start, duration]); // eslint-disable-line react-hooks/exhaustive-deps
 }
 
+// Liga/desliga o som de quem está tocando (música do post ou som do vídeo).
+// Precisa ser chamado dentro de um toque (o iPhone só libera o som assim).
+export function toggleSound(playerKey, s) {
+  const mine = s.key === playerKey;
+  const blocked = mine && (s.status === 'blocked' || s.status === 'error');
+  if (!s.soundOn) {
+    player.focus(playerKey);
+    player.setSound(true);
+  } else if (blocked) {
+    player.retry();
+  } else if (!mine) {
+    player.focus(playerKey);
+  } else {
+    player.setSound(false);
+  }
+}
+
 // Botão de som (alto-falante) sobre a foto ou no story
 export function SoundButton({ playerKey, className = '', size = 14, light = false }) {
   const s = usePlayer();
@@ -39,16 +56,7 @@ export function SoundButton({ playerKey, className = '', size = 14, light = fals
   const on = s.soundOn && !blocked;
   const click = (e) => {
     e.stopPropagation();
-    if (!s.soundOn) {
-      player.focus(playerKey);
-      player.setSound(true);
-    } else if (blocked) {
-      player.retry();
-    } else if (!mine) {
-      player.focus(playerKey);
-    } else {
-      player.setSound(false);
-    }
+    toggleSound(playerKey, s);
   };
   return (
     <button

@@ -1,6 +1,6 @@
 import { useRef, useState } from 'react';
 import { NavLink, useLocation, useNavigate } from 'react-router';
-import { Home, Search, PlusSquare, Heart, Image as ImageIcon, CircleDashed } from 'lucide-react';
+import { Home, Search, PlusSquare, Heart, Image as ImageIcon, CircleDashed, Clapperboard } from 'lucide-react';
 import Avatar from './Avatar';
 import AccountSwitcher from './AccountSwitcher';
 import { Sheet, SheetItem } from './ui';
@@ -9,7 +9,9 @@ import { useUnread } from '../state/unread';
 import { emit } from '../lib/events';
 
 export default function BottomNav() {
-  const { active } = useSession();
+  const { active, can } = useSession();
+  // com vídeos, Reels ganha o lugar do coração, que vai para o topo do feed (como no Instagram)
+  const reels = can('videos');
   const { notifications, others } = useUnread(active?.id);
   const location = useLocation();
   const navigate = useNavigate();
@@ -60,14 +62,20 @@ export default function BottomNav() {
         <button type="button" className="bottomnav__item" aria-label="Criar" onClick={() => setCreateOpen(true)}>
           <PlusSquare size={27} strokeWidth={1.8} />
         </button>
-        <NavLink to="/atividade" className="bottomnav__item" aria-label="Atividade">
-          {({ isActive }) => (
-            <span className="nav-icon-wrap">
-              <Heart size={27} strokeWidth={isActive ? 2.4 : 1.8} fill={isActive ? 'currentColor' : 'none'} />
-              {notifications > 0 && <span className="nav-dot" />}
-            </span>
-          )}
-        </NavLink>
+        {reels ? (
+          <NavLink to="/reels" className="bottomnav__item" aria-label="Reels">
+            {({ isActive }) => <Clapperboard size={27} strokeWidth={isActive ? 2.4 : 1.8} />}
+          </NavLink>
+        ) : (
+          <NavLink to="/atividade" className="bottomnav__item" aria-label="Atividade">
+            {({ isActive }) => (
+              <span className="nav-icon-wrap">
+                <Heart size={27} strokeWidth={isActive ? 2.4 : 1.8} fill={isActive ? 'currentColor' : 'none'} />
+                {notifications > 0 && <span className="nav-dot" />}
+              </span>
+            )}
+          </NavLink>
+        )}
         <button
           type="button"
           className="bottomnav__item"
@@ -111,6 +119,17 @@ export default function BottomNav() {
         >
           Story
         </SheetItem>
+        {reels && (
+          <SheetItem
+            icon={<Clapperboard size={24} />}
+            onClick={() => {
+              setCreateOpen(false);
+              navigate('/criar/reel');
+            }}
+          >
+            Reel
+          </SheetItem>
+        )}
       </Sheet>
 
       <AccountSwitcher open={switchOpen} onClose={() => setSwitchOpen(false)} />

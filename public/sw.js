@@ -1,13 +1,15 @@
 // Service worker do FargusGram
 // - abre rápido (guarda os arquivos do app)
-// - guarda as fotos já vistas (economiza internet e o limite grátis do Supabase)
+// - guarda as fotos e os vídeos já vistos (economiza internet e o limite grátis do Supabase)
 // - nunca guarda respostas da API (feed, curtidas etc. vêm sempre frescas)
 // - mostra as notificações no celular e abre o app no lugar certo ao tocar
 
 const VERSION = 'fg-v2';
 const APP_CACHE = `${VERSION}-app`;
 const IMG_CACHE = `${VERSION}-img`;
+const VIDEO_CACHE = `${VERSION}-vid`;
 const MAX_IMAGES = 400;
+const MAX_VIDEOS = 50; // uns 70 MB no celular
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
@@ -32,18 +34,36 @@ self.addEventListener('message', (event) => {
   if (event.data === 'skipWaiting') self.skipWaiting();
 });
 
-async function trimImages() {
-  const cache = await caches.open(IMG_CACHE);
+async function trimCache(name, max) {
+  const cache = await caches.open(name);
   const keys = await cache.keys();
-  if (keys.length > MAX_IMAGES) {
-    await Promise.all(keys.slice(0, keys.length - MAX_IMAGES).map((k) => cache.delete(k)));
+  if (keys.length > max) {
+    await Promise.all(keys.slice(0, keys.length - max).map((k) => cache.delete(k)));
   }
 }
+const trimImages = () => trimCache(IMG_CACHE, MAX_IMAGES);
 
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
+
+  // Vídeos: o app baixa o arquivo inteiro (sem pedaços), então guarda como as fotos.
+  // Pedidos de pedaços (Range) seguem direto para a rede.
+  if (url.pathname.includes('/storage/v1/object/public/') && url.pathname.endsWith('.mp4')) {
+    if (req.headers.has('range')) return;
+    event.respondWith(
+      (async () => {
+        const cache = await caches.open(VIDEO_CACHE);
+        const hit = await cache.match(req);
+        if (hit && hit.type !== 'opaque') return hit;
+        const res = await fetch(req);
+        if (res.ok && res.status === 200) cache.put(req, res.clone()).then(() => trimCache(VIDEO_CACHE, MAX_VIDEOS)).catch(() => {});
+        return res;
+      })()
+    );
+    return;
+  }
 
   // Fotos públicas do Supabase Storage: o caminho nunca muda, então dá para guardar
   if (url.pathname.includes('/storage/v1/object/public/')) {

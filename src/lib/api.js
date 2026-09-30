@@ -159,6 +159,10 @@ export const characterPosts = (character, before) =>
   rpc('character_posts', { p_character: character, p_before: before ?? null, p_limit: 30 });
 export const taggedPosts = (character, before) =>
   rpc('tagged_posts', { p_character: character, p_before: before ?? null, p_limit: 30 });
+// Reels (só com o banco atualizado: videos)
+export const reels = (viewer, before) => rpc('reels', { p_viewer: viewer, p_before: before ?? null, p_limit: 6 });
+export const characterReels = (character, before) =>
+  rpc('character_reels', { p_character: character, p_before: before ?? null, p_limit: 30 });
 export const savedPosts = (character, before) =>
   rpc('saved_posts', { p_character: character, p_before: before ?? null, p_limit: 30 });
 export const hashtagPosts = (tag, before) => rpc('hashtag_posts', { p_tag: tag, p_before: before ?? null, p_limit: 30 });
@@ -473,6 +477,20 @@ export async function uploadImage(uid, characterId, kind, blob) {
   unwrap(
     await supabase.storage.from('media').upload(path, blob, {
       contentType: blob.type || 'image/jpeg',
+      cacheControl: '31536000',
+      upsert: false,
+    })
+  );
+  return path;
+}
+
+// Vídeo já comprimido (lib/videoEdit.js). Sem som: o nome termina em -mudo.mp4
+export async function uploadVideo(uid, characterId, kind, blob, { silent = false } = {}) {
+  const name = randomName('mp4');
+  const path = `${uid}/${characterId}/${kind}/${silent ? name.replace(/\.mp4$/, '-mudo.mp4') : name}`;
+  unwrap(
+    await supabase.storage.from('media').upload(path, blob, {
+      contentType: 'video/mp4',
       cacheControl: '31536000',
       upsert: false,
     })

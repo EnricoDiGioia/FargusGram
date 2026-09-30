@@ -5,6 +5,7 @@ import { Spinner, Sheet, SheetItem, Handle, useConfirm } from '../components/ui'
 import Avatar from '../components/Avatar';
 import CharacterRow from '../components/CharacterRow';
 import { MusicInfoSheet, MusicLine, SoundButton } from '../components/Music';
+import { HostedVideo } from '../components/Video';
 import { AddToHighlightSheet, HighlightCover } from '../components/Highlights';
 import { CloseBadge } from '../components/CloseFriends';
 import { StickerOverlay } from '../components/StoryStickers';
@@ -15,6 +16,8 @@ import { pageCache } from '../lib/storage';
 import { emit } from '../lib/events';
 import { timeShort } from '../lib/format';
 import { cleanMusic, clipOf, player, usePlayer } from '../lib/music';
+import { isSilentVideo, isVideoPath, prefetchVideo } from '../lib/videoFiles';
+import { videoHost, useVideoHost } from '../lib/videoHost';
 import * as api from '../lib/api';
 
 const DURATION = 5500;
@@ -119,7 +122,13 @@ export default function StoryViewer({ mode = 'stories' }) {
   const withStickers = can('interacoes');
   const canReact = can('reacoes');
   const st = story ? inter[story.id] : null;
-  const loaded = !!story && loadedId === story.id;
+  // story em vídeo: toca no <video> do app; a barra anda com o vídeo
+  const vs = useVideoHost();
+  const isVid = isVideoPath(story?.path);
+  const vidKey = story ? `story:${story.id}` : null;
+  const vidMine = isVid && vs.key === vidKey;
+  const vidFailed = vidMine && vs.status === 'error';
+  const loaded = !!story && (isVid ? (vidMine && vs.ready) || vidFailed : loadedId === story.id);
   const own = group && isMine(group.character.id);
   const storyMusic = story?.music;
   const music = useMemo(() => cleanMusic(storyMusic), [storyMusic]);
@@ -201,7 +210,10 @@ export default function StoryViewer({ mode = 'stories' }) {
     }
     // pré-carrega a próxima
     const n = group.stories[si + 1];
-    if (n) new Image().src = mediaUrl(n.path);
+    if (n && isVideoPath(n.path)) {
+      if (n.thumb_path) new Image().src = mediaUrl(n.thumb_path);
+      prefetchVideo(n.path);
+    } else if (n) new Image().src = mediaUrl(n.path);
   }, [story?.id, loaded]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -314,11 +326,16 @@ export default function StoryViewer({ mode = 'stories' }) {
     return () => clearTimeout(t);
   }, [story?.id, music, loaded]);
   const audioWaiting = !!music && loaded && ps.soundOn && !audioGiveUp && (ps.key !== musicKey || ps.status === 'loading');
-  const audioBlocked = !!music && ps.soundOn && ps.key === musicKey && ps.status === 'blocked';
+  // som do próprio vídeo (sem música e sem "-mudo")
+  const vidSound = isVid && !music && !isSilentVideo(story?.path);
+  const vidSoundKey = vidSound ? videoHost.soundKey(vidKey) : null;
+  const audioBlocked =
+    ps.soundOn && ((!!music && ps.key === musicKey && ps.status === 'blocked') || (!!vidSoundKey && ps.key === vidSoundKey && ps.status === 'blocked'));
 
   // barra de progresso
-  const holding =
-    paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !!repostOf || !loaded || audioWaiting || document.activeElement?.tagName === 'INPUT';
+  const uiHold = paused || menu || !!viewers || musicInfo || highlightSheet || !!asking || !!repostOf || document.activeElement?.tagName === 'INPUT';
+  const holding = uiHold || !loaded || audioWaiting;
+  const videoPlays = isVid && !vidFailed;
   useEffect(() => {
     if (!story) return;
     let raf;
@@ -326,18 +343,26 @@ export default function StoryViewer({ mode = 'stories' }) {
     const tick = (now) => {
       const dt = now - last;
       last = now;
-      if (!holding) elapsed.current += dt;
-      const p = Math.min(1, elapsed.current / duration);
-      if (bar.current) bar.current.style.transform = `scaleX(${p})`;
-      if (p >= 1) {
-        next();
-        return;
+      let p;
+      if (videoPlays) {
+        // o vídeo manda: a barra acompanha o tempo dele (o fim chama next)
+        const d = videoHost.isCurrent(vidKey) ? videoHost.duration() : 0;
+        p = d ? Math.min(1, videoHost.time() / d) : 0;
+      } else {
+        if (!holding) elapsed.current += dt;
+        p = Math.min(1, elapsed.current / duration);
+        if (p >= 1) {
+          if (bar.current) bar.current.style.transform = 'scaleX(1)';
+          next();
+          return;
+        }
       }
+      if (bar.current) bar.current.style.transform = `scaleX(${p})`;
       raf = requestAnimationFrame(tick);
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [story, holding, next, duration]);
+  }, [story, holding, next, duration, videoPlays, vidKey]);
 
   const onPointerDown = (e) => {
     touch.current = { x: e.clientX, y: e.clientY, t: Date.now() };
@@ -494,7 +519,26 @@ export default function StoryViewer({ mode = 'stories' }) {
             onPointerCancel={() => setPaused(false)}
             onContextMenu={(e) => e.preventDefault()}
           >
-            <img ref={imgRef} key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoadedId(story.id)} onError={() => setLoadedId(story.id)} />
+            {isVid ? (
+              <HostedVideo
+                key={story.id}
+                hostKey={vidKey}
+                path={story.path}
+                poster={story.thumb_path}
+                active
+                loop={false}
+                sound={vidSound}
+                held={uiHold || audioWaiting}
+                fit=""
+                eager
+                showSpinner={false}
+                boxRef={imgRef}
+                onEnded={next}
+                className="story-viewer__video"
+              />
+            ) : (
+              <img ref={imgRef} key={story.id} src={mediaUrl(story.path)} alt="" draggable="false" onLoad={() => setLoadedId(story.id)} onError={() => setLoadedId(story.id)} />
+            )}
             {loaded && st?.stickers?.length > 0 && (
               <StickerOverlay
                 stickers={st.stickers}
@@ -542,6 +586,7 @@ export default function StoryViewer({ mode = 'stories' }) {
               </div>
               <div className="story-viewer__actions">
                 {music && <SoundButton playerKey={musicKey} light size={22} />}
+                {vidSoundKey && <SoundButton playerKey={vidSoundKey} light size={22} />}
                 {(own || isAdmin) && (
                   <button type="button" className="icon-btn icon-btn--light" aria-label="Opções" onClick={() => setMenu(true)}>
                     <MoreHorizontal size={24} />
@@ -556,7 +601,7 @@ export default function StoryViewer({ mode = 'stories' }) {
 
           {audioBlocked && (
             <button type="button" data-sound-btn="" className="story-viewer__tap-sound" onClick={() => player.retry()}>
-              <VolumeX size={16} /> Toque para ouvir a música
+              <VolumeX size={16} /> {music ? 'Toque para ouvir a música' : 'Toque para ouvir o som'}
             </button>
           )}
 

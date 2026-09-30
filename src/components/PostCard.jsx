@@ -4,7 +4,8 @@ import { Heart, MessageCircle, Send, Bookmark, MoreHorizontal, UserRound, Trash2
 import Avatar from './Avatar';
 import RichText from './RichText';
 import ShareSheet from './ShareSheet';
-import { MusicInfoSheet, MusicLine, SoundButton, useMusicInView } from './Music';
+import { MusicInfoSheet, MusicLine, SoundButton, toggleSound, useMusicInView } from './Music';
+import { HostedVideo, useInView } from './Video';
 import { Handle, Sheet, SheetItem, useConfirm } from './ui';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
@@ -12,14 +13,24 @@ import * as api from '../lib/api';
 import { mediaUrl } from '../lib/supabase';
 import { emit } from '../lib/events';
 import { count, timeLong } from '../lib/format';
-import { cleanMusic } from '../lib/music';
+import { cleanMusic, usePlayer } from '../lib/music';
+import { isSilentVideo, isVideoPath } from '../lib/videoFiles';
+import { videoHost } from '../lib/videoHost';
 import { fadeIn } from '../lib/fade';
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, onIndex, children }) {
+// videoKey: chave dos vídeos deste post (sem ela, vídeos ficam só na foto)
+// inView: o post está bem visível (o vídeo da foto atual toca)
+// videoSound: o vídeo usa o som dele (não, se o post tem música)
+export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, onIndex, children, videoKey, inView = false, videoSound = true }) {
   const track = useRef(null);
   const last = useRef({ t: 0, x: 0, y: 0 });
+  const down = useRef(null);
+  const ps = usePlayer();
+  const cur = media[index || 0];
+  const curVideo = !!videoKey && isVideoPath(cur?.path);
+  const curSoundKey = curVideo && videoSound && !isSilentVideo(cur.path) ? videoHost.soundKey(`${videoKey}:${index || 0}`) : null;
   const [showTags, setShowTags] = useState(false);
   const first = media[0] || { width: 1, height: 1 };
   const ratio = clamp(first.width / first.height, 0.8, 1.91);
@@ -39,6 +50,9 @@ export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, 
   const onPointerUp = (e) => {
     const now = Date.now();
     const l = last.current;
+    // toque no vídeo: liga/desliga o som (dois toques = curtir, e o som volta)
+    const d = down.current;
+    if (curSoundKey && d && Math.hypot(e.clientX - d.x, e.clientY - d.y) < 10) toggleSound(curSoundKey, ps);
     if (now - l.t < 320 && Math.hypot(e.clientX - l.x, e.clientY - l.y) < 40) {
       last.current = { t: 0, x: 0, y: 0 };
       onDoubleTap?.();
@@ -49,22 +63,41 @@ export function MediaCarousel({ media, onDoubleTap, tags = [], burstKey, index, 
 
   return (
     <div className="carousel" style={{ aspectRatio: String(ratio) }}>
-      <div className="carousel__track" ref={track} onScroll={onScroll} onPointerUp={onPointerUp} onDoubleClick={(e) => e.preventDefault()}>
+      <div
+        className="carousel__track"
+        ref={track}
+        onScroll={onScroll}
+        onPointerDown={(e) => (down.current = { x: e.clientX, y: e.clientY })}
+        onPointerUp={onPointerUp}
+        onDoubleClick={(e) => e.preventDefault()}
+      >
         {media.map((m, i) => (
           <div className="carousel__slide" key={m.path || i}>
-            <img
-              {...fadeIn}
-              src={mediaUrl(m.path)}
-              alt=""
-              loading={i === 0 ? 'eager' : 'lazy'}
-              decoding="async"
-              draggable="false"
-              width={m.width}
-              height={m.height}
-            />
+            {isVideoPath(m.path) ? (
+              <HostedVideo
+                hostKey={`${videoKey || 'x'}:${i}`}
+                path={m.path}
+                poster={m.thumb_path}
+                active={!!videoKey && inView && i === (index || 0)}
+                sound={videoSound && !isSilentVideo(m.path)}
+                eager={i === 0}
+              />
+            ) : (
+              <img
+                {...fadeIn}
+                src={mediaUrl(m.path)}
+                alt=""
+                loading={i === 0 ? 'eager' : 'lazy'}
+                decoding="async"
+                draggable="false"
+                width={m.width}
+                height={m.height}
+              />
+            )}
           </div>
         ))}
       </div>
+      {curSoundKey && <SoundButton playerKey={curSoundKey} className="carousel__sound" />}
       {media.length > 1 && (
         <span className="carousel__count">
           {(index || 0) + 1}/{media.length}
@@ -177,6 +210,8 @@ export default function PostCard({ post, showAllComments = false }) {
   const music = useMemo(() => cleanMusic(post.music), [post.music]);
   const musicKey = `post:${post.id}`;
   useMusicInView(media, musicKey, music);
+  const hasVideo = post.media.some((m) => isVideoPath(m.path));
+  const inView = useInView(media);
 
   const mine = isMine(post.character?.id);
   const patch = (p) => emit('post:update', { id: post.id, patch: p });
@@ -266,7 +301,17 @@ export default function PostCard({ post, showAllComments = false }) {
       </header>
 
       <div ref={media}>
-        <MediaCarousel media={post.media} tags={post.tags} onDoubleTap={onDoubleTap} burstKey={burst} index={index} onIndex={setIndex}>
+        <MediaCarousel
+          media={post.media}
+          tags={post.tags}
+          onDoubleTap={onDoubleTap}
+          burstKey={burst}
+          index={index}
+          onIndex={setIndex}
+          videoKey={hasVideo ? `post:${post.id}` : undefined}
+          inView={inView}
+          videoSound={!music}
+        >
           {music && <SoundButton playerKey={musicKey} className="carousel__sound" />}
         </MediaCarousel>
       </div>

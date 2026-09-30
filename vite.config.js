@@ -8,7 +8,9 @@ export default defineConfig({
   plugins: [react()],
   build: {
     target: ['es2020', 'safari15'],
-    chunkSizeWarningLimit: 900,
+    // o maior pedaço é o codificador de som dos vídeos (~1 MB), que só é
+    // baixado quando alguém prepara um vídeo num aparelho que não tem um
+    chunkSizeWarningLimit: 1100,
     rollupOptions: {
       output: {
         // bibliotecas separadas: atualizações do app baixam menos

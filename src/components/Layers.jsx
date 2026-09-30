@@ -6,6 +6,7 @@ import '@fontsource/bebas-neue/latin-400.css';
 import '@fontsource/playfair-display/latin-700-italic.css';
 import { TEXT_FONTS, fontOf, cssFont } from '../lib/fonts';
 import { StickerFace } from './StoryStickers';
+import { ClipVideo } from './VideoEditParts';
 import { LAYER_REF_W, TEXT_WRAP, STORY_FONT, layerRadius, repostBadge, prepareImage } from '../lib/media';
 
 // ---------------------------------------------------------------------
@@ -103,7 +104,13 @@ export async function photoLayersFrom(files, layers, onError, ratio) {
 }
 
 export function revokeLayers(layers) {
-  for (const l of layers || []) if (l.kind === 'photo') URL.revokeObjectURL(l.image.url);
+  for (const l of layers || []) if (l.kind === 'photo') revokeImage(l.image);
+}
+// foto ou vídeo (o vídeo tem também a foto do primeiro quadro)
+export function revokeImage(image) {
+  if (!image) return;
+  URL.revokeObjectURL(image.url);
+  if (image.poster?.url) URL.revokeObjectURL(image.poster.url);
 }
 
 const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
@@ -306,7 +313,7 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
   };
   const remove = (id) => {
     const l = layersRef.current.find((x) => x.id === id);
-    if (l?.kind === 'photo') URL.revokeObjectURL(l.image.url);
+    if (l?.kind === 'photo') revokeImage(l.image);
     const next = layersRef.current.filter((x) => x.id !== id);
     layersRef.current = next;
     onChangeRef.current(next);
@@ -623,12 +630,19 @@ export function LayerStage({ layers, onChange, onEditText, className = '', readO
                   className={`layer layer--photo ${l.base ? 'layer--base' : ''} ${selected ? 'is-selected' : ''}`}
                   style={{ ...place, width: w, height: h }}
                 >
-                  <img
-                    src={l.image.url}
-                    alt=""
-                    draggable="false"
-                    style={l.base ? undefined : { borderRadius: layerRadius(l, w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
-                  />
+                  {l.image.video ? (
+                    <ClipVideo
+                      clip={l.image}
+                      style={l.base ? undefined : { borderRadius: layerRadius(l, w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
+                    />
+                  ) : (
+                    <img
+                      src={l.image.url}
+                      alt=""
+                      draggable="false"
+                      style={l.base ? undefined : { borderRadius: layerRadius(l, w, h), boxShadow: `0 ${6 * k * (l.scale || 1)}px ${24 * k * (l.scale || 1)}px rgba(0,0,0,.35)` }}
+                    />
+                  )}
                   {l.repost && <RepostBadge handle={l.repost.handle} w={w} />}
                 </div>
               );

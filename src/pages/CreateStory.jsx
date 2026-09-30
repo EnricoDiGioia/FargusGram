@@ -1,15 +1,17 @@
 import { useEffect, useRef, useState } from 'react';
 import { useLocation, useNavigate } from 'react-router';
-import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus, Sticker } from 'lucide-react';
+import { X, Type, Images, Palette, Trash2, ChevronRight, Music2, Star, ListChecks, ImagePlus, Sticker, Scissors, Volume2, VolumeX } from 'lucide-react';
 import { Spinner, useConfirm, FullScreen } from '../components/ui';
 import Avatar from '../components/Avatar';
 import MusicPicker from '../components/MusicPicker';
 import { CloseFriendsSheet } from '../components/CloseFriends';
 import { MAX_STICKERS, MentionPicker, StickerEditor, StickerPicker, newSticker, nextTimeStyle, stickersForDb, timeFields } from '../components/StoryStickers';
-import { LayerStage, TextEditor, newBaseLayer, newRepostLayer, newTextLayer, photoLayersFrom, repostHotspots, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
+import { LayerStage, TextEditor, newBaseLayer, newRepostLayer, newTextLayer, photoLayersFrom, repostHotspots, revokeImage, revokeLayers, MAX_TEXT_LAYERS } from '../components/Layers';
+import { VideoTrimmer, isVideoFile, MAX_SECONDS } from '../components/VideoEditParts';
 import { useSession } from '../state/session';
 import { useToast } from '../state/toast';
-import { photoColors, prepareImage, renderStory, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
+import { photoColors, prepareImage, renderStory, storyVideoComposer, STORY_BACKGROUNDS, STORY_W } from '../lib/media';
+import { isVideoPath } from '../lib/videoFiles';
 import { emit } from '../lib/events';
 import { pageCache } from '../lib/storage';
 import { clipOf, musicForDb, musicLabel, player } from '../lib/music';
@@ -19,9 +21,21 @@ import { mediaUrl } from '../lib/supabase';
 
 const ASPECT = 9 / 16;
 const EDITOR_MUSIC = 'story-editor';
+const VIDEO_W = 540; // story em vídeo: 540 × 960 (a foto é 1080 × 1920)
+const VIDEO_H = 960;
+const NO_VIDEOS = 'Vídeos ainda não estão ligados: falta rodar a atualização do banco (veja o README).';
+
+// abre um vídeo (a biblioteca de vídeo só carrega aqui)
+async function openClip(file) {
+  const ve = await import('../lib/videoEdit');
+  const support = await ve.videoSupport();
+  if (!support.ok) throw new Error(support.reason);
+  return ve.openVideo(file);
+}
 
 export default function CreateStory() {
   const { active, uid, can } = useSession();
+  const videosOn = can('videos');
   const navigate = useNavigate();
   const toast = useToast();
   const confirm = useConfirm();
@@ -46,6 +60,8 @@ export default function CreateStory() {
   const [closeSheet, setCloseSheet] = useState(false);
   const [closePending, setClosePending] = useState(false); // publicar assim que a lista tiver alguém
   const [sendingTo, setSendingTo] = useState(null); // qual botão mostra o "carregando"
+  const [trimming, setTrimming] = useState(false);
+  const [progress, setProgress] = useState(null); // preparando o vídeo (0..1)
   const drag = useRef(null);
 
   // capa da música (para o adesivo)
@@ -130,6 +146,8 @@ export default function CreateStory() {
   const base = layers.find((l) => l.base);
   const repost = layers.find((l) => l.repost);
   const photoForBg = base || repost;
+  // o vídeo do story (da galeria ou o story repostado); só cabe um
+  const videoLayer = layers.find((l) => l.kind === 'photo' && l.image?.video);
 
   // "Adicionar ao seu story" (story em que você foi marcado): entra como um
   // cartão com o @ de quem fez, e o fundo pega as cores dele
@@ -142,12 +160,33 @@ export default function CreateStory() {
       setBusy(true);
       try {
         const orig = await api.storyForRepost(repostId, active.id);
-        const res = await fetch(mediaUrl(orig.path));
-        if (!res.ok) throw new Error('Não consegui abrir o story.');
-        const img = await prepareImage(await res.blob(), 1600);
-        if (!alive) return URL.revokeObjectURL(img.url);
+        let img;
+        if (isVideoPath(orig.path)) {
+          // story em vídeo: entra como vídeo (ou, sem vídeo neste aparelho, a foto do começo)
+          let clip = null;
+          if (videosOn) {
+            try {
+              const res = await fetch(mediaUrl(orig.path));
+              if (res.ok) clip = await openClip(new File([await res.blob()], 'story.mp4', { type: 'video/mp4' }));
+            } catch {
+              clip = null;
+            }
+          }
+          if (clip) img = clip;
+          else {
+            if (!orig.thumb_path) throw new Error('Não consegui abrir o story.');
+            const res = await fetch(mediaUrl(orig.thumb_path));
+            if (!res.ok) throw new Error('Não consegui abrir o story.');
+            img = await prepareImage(await res.blob(), 1600);
+          }
+        } else {
+          const res = await fetch(mediaUrl(orig.path));
+          if (!res.ok) throw new Error('Não consegui abrir o story.');
+          img = await prepareImage(await res.blob(), 1600);
+        }
+        if (!alive) return revokeImage(img);
         setLayers((ls) => (ls.some((l) => l.repost) ? ls : [...ls, newRepostLayer(ls, img, orig)]));
-        const colors = photoColors(img.img);
+        const colors = photoColors(img.video ? img.poster.img : img.img);
         if (colors) {
           setPhotoBg(colors);
           setGi(-1);
@@ -169,13 +208,20 @@ export default function CreateStory() {
     if (!file) return;
     setBusy(true);
     try {
-      const img = await prepareImage(file, 2200);
+      let img;
+      if (isVideoFile(file)) {
+        if (!videosOn) throw new Error(NO_VIDEOS);
+        if (layersRef.current.some((l) => l.repost && l.image?.video)) throw new Error('Este story já tem um vídeo (o repostado). Escolha uma foto.');
+        img = await openClip(file);
+      } else img = await prepareImage(file, 2200);
       const old = layersRef.current.find((l) => l.base);
-      if (old) URL.revokeObjectURL(old.image.url);
+      if (old) revokeImage(old.image);
       setLayers((ls) => [...ls.filter((l) => !l.base), newBaseLayer(img, 1 / ASPECT)]);
-      const colors = photoColors(img.img);
+      const colors = photoColors(img.video ? img.poster.img : img.img);
       setPhotoBg(colors);
       if (colors) setGi(-1);
+      // vídeo com mais de 15 s: já abre para escolher o trecho
+      if (img.video && img.duration > MAX_SECONDS + 0.05) setTrimming(true);
     } catch (err) {
       toast(err.message);
     } finally {
@@ -184,9 +230,10 @@ export default function CreateStory() {
   };
   const removeBase = () => {
     const old = layersRef.current.find((l) => l.base);
-    if (old) URL.revokeObjectURL(old.image.url);
+    if (old) revokeImage(old.image);
     setLayers((ls) => ls.filter((l) => !l.base));
   };
+  const setVideo = (patch) => setLayers((ls) => ls.map((l) => (l.kind === 'photo' && l.image?.video ? { ...l, image: { ...l.image, ...patch } } : l)));
   const nextBackground = () =>
     setGi((g) => {
       const n = STORY_BACKGROUNDS.length;
@@ -304,15 +351,41 @@ export default function CreateStory() {
     let path;
     let thumbPath;
     try {
-      const { blob, thumb, width, height } = await renderStory({
-        gradient: bg,
-        layers,
-        stickers: music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [],
-      });
+      const musicStickers = music && sticker && stickerImg ? [{ canvas: stickerImg.canvas, x: sticker.x, y: sticker.y }] : [];
       const figurinhas = can('interacoes') ? [...stickersForDb(layers), ...(can('repost') ? repostHotspots(layers) : [])] : [];
-      path = await api.uploadImage(uid, active.id, 'stories', blob);
-      // miniatura só quando o banco já tem destaques (senão não há onde guardar)
-      if (can('destaques')) thumbPath = await api.uploadImage(uid, active.id, 'stories', thumb);
+      let width;
+      let height;
+      if (videoLayer) {
+        // story em vídeo: cada quadro sai igual ao editor (fundo, vídeo, textos, adesivo)
+        setProgress(0);
+        const ve = await import('../lib/videoEdit');
+        const comp = await storyVideoComposer({ gradient: bg, layers, stickers: musicStickers, width: VIDEO_W, height: VIDEO_H });
+        let res;
+        try {
+          res = await ve.exportVideo(videoLayer.image, {
+            width: VIDEO_W,
+            height: VIDEO_H,
+            compose: comp.compose,
+            keepAudio: !music && !videoLayer.image.muted,
+            detail: Math.min(1, (videoLayer.w * VIDEO_W * (videoLayer.scale || 1)) / videoLayer.image.width),
+            onProgress: setProgress,
+          });
+        } finally {
+          comp.release();
+        }
+        setProgress(1);
+        path = await api.uploadVideo(uid, active.id, 'stories', res.blob, { silent: !res.hasAudio });
+        thumbPath = await api.uploadImage(uid, active.id, 'stories', res.poster);
+        width = VIDEO_W;
+        height = VIDEO_H;
+      } else {
+        const r = await renderStory({ gradient: bg, layers, stickers: musicStickers });
+        width = r.width;
+        height = r.height;
+        path = await api.uploadImage(uid, active.id, 'stories', r.blob);
+        // miniatura só quando o banco já tem destaques (senão não há onde guardar)
+        if (can('destaques')) thumbPath = await api.uploadImage(uid, active.id, 'stories', r.thumb);
+      }
       await api.createStory({
         character: active.id,
         path,
@@ -332,6 +405,7 @@ export default function CreateStory() {
       if (path) api.removeFiles([path, thumbPath]).catch(() => {});
       toast(api.errorMessage(err));
       setBusy(false);
+      setProgress(null);
     }
   };
 
@@ -394,15 +468,36 @@ export default function CreateStory() {
             <button type="button" className="icon-btn icon-btn--light" onClick={nextBackground} aria-label="Trocar fundo">
               <Palette size={26} />
             </button>
+            {videoLayer && (
+              <button type="button" className="icon-btn icon-btn--light" onClick={() => setTrimming(true)} aria-label="Cortar vídeo">
+                <Scissors size={24} />
+              </button>
+            )}
+            {videoLayer?.image.hasAudio && (
+              <button
+                type="button"
+                className={`icon-btn icon-btn--light ${!videoLayer.image.muted && !music ? 'is-on' : ''}`}
+                onClick={() => (music ? toast('Com música, o vídeo vai sem o som dele.') : setVideo({ muted: !videoLayer.image.muted }))}
+                aria-label={videoLayer.image.muted || music ? 'Vídeo sem som (tocar para ligar)' : 'Vídeo com som (tocar para tirar)'}
+                aria-pressed={!videoLayer.image.muted && !music}
+              >
+                {videoLayer.image.muted || music ? <VolumeX size={24} /> : <Volume2 size={24} />}
+              </button>
+            )}
             {base && (
-              <button type="button" className="icon-btn icon-btn--light" onClick={removeBase} aria-label="Remover foto">
+              <button type="button" className="icon-btn icon-btn--light" onClick={removeBase} aria-label={base.image.video ? 'Remover vídeo' : 'Remover foto'}>
                 <Trash2 size={24} />
               </button>
             )}
           </div>
         </div>
 
-        <button type="button" className="story-editor__gallery" onClick={() => fileInput.current?.click()} aria-label="Escolher foto da galeria">
+        <button
+          type="button"
+          className="story-editor__gallery"
+          onClick={() => fileInput.current?.click()}
+          aria-label={videosOn ? 'Escolher foto ou vídeo da galeria' : 'Escolher foto da galeria'}
+        >
           {busy ? <Spinner size={20} /> : <Images size={26} />}
         </button>
       </div>
@@ -445,7 +540,27 @@ export default function CreateStory() {
         }}
       />
 
-      <input ref={fileInput} type="file" accept="image/*" hidden onChange={pick} />
+      <input ref={fileInput} type="file" accept={videosOn ? 'image/*,video/*' : 'image/*'} hidden onChange={pick} />
+      {trimming && videoLayer && (
+        <VideoTrimmer
+          clip={videoLayer.image}
+          noSound={!!music}
+          onCancel={() => setTrimming(false)}
+          onDone={({ start, end, muted }) => {
+            setTrimming(false);
+            setVideo({ start, end, muted });
+          }}
+        />
+      )}
+      {progress !== null && (
+        <div className="overlay-progress">
+          <Spinner size={34} />
+          <p>{progress < 1 ? `Preparando o vídeo ${Math.round(progress * 100)}%…` : 'Enviando…'}</p>
+          <span className="overlay-progress__bar">
+            <span style={{ transform: `scaleX(${progress})` }} />
+          </span>
+        </div>
+      )}
       <input ref={photoInput} type="file" accept="image/*" multiple hidden onChange={pickPhotos} />
       <MusicPicker open={musicOpen} onClose={() => setMusicOpen(false)} value={music && { ...music, sticker }} onChange={chooseMusic} story />
       <StickerPicker open={stickerMenu} onClose={() => setStickerMenu(false)} onPick={pickSticker} />

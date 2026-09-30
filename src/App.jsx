@@ -41,6 +41,7 @@ const StoryViewer = lazy(() => import('./pages/StoryViewer'));
 const EditPost = lazy(() => import('./pages/EditPost'));
 const Admin = lazy(() => import('./pages/Admin'));
 const Themes = lazy(() => import('./pages/Themes'));
+const Reels = lazy(() => import('./pages/Reels'));
 const HighlightEditor = lazy(() => import('./pages/HighlightEditor'));
 
 // Avisa quando existe uma versão nova do app publicada
@@ -226,6 +227,7 @@ function AppRoutes() {
             <Route path="direct" element={<Inbox />} />
             <Route path="configuracoes" element={<Settings />} />
             <Route path="temas" element={<Themes />} />
+            <Route path="reels" element={<Reels />} />
             <Route path="admin" element={<Admin />} />
             <Route path="editar-perfil" element={<EditProfile />} />
             <Route path="novo-personagem" element={<NewCharacter />} />
@@ -238,6 +240,7 @@ function AppRoutes() {
           <Route path="direct/:id" element={screen(<Chat />)} />
           <Route path="criar/post" element={screen(<CreatePost />)} />
           <Route path="criar/story" element={screen(<CreateStory />)} />
+          <Route path="criar/reel" element={screen(<CreatePost key="reel" reel />)} />
           <Route path="stories/:characterId" element={screen(<StoryViewer />)} />
           <Route path="destaques/novo" element={screen(<HighlightEditor />)} />
           <Route path="destaques/:id/editar" element={screen(<HighlightEditor />)} />

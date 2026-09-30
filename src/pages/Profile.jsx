@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router';
-import { ChevronDown, Menu, PlusSquare, Grid3x3, SquareUserRound, Bookmark, MoreHorizontal, Link2, Camera, Star } from 'lucide-react';
+import { ChevronDown, Menu, PlusSquare, Grid3x3, SquareUserRound, Bookmark, MoreHorizontal, Link2, Camera, Star, Clapperboard } from 'lucide-react';
 import { TopBar, BackButton, IconButton, Spinner, EmptyState, ErrorBox, Handle, Button, Sheet, SheetItem, PageLoader } from '../components/ui';
 import Avatar from '../components/Avatar';
 import RichText from '../components/RichText';
@@ -22,6 +22,7 @@ function PostsTab({ kind, character }) {
   const key = `${kind}:${character.id}`;
   const fetcher = {
     grid: (b) => api.characterPosts(character.id, b),
+    reels: (b) => api.characterReels(character.id, b),
     tagged: (b) => api.taggedPosts(character.id, b),
     saved: (b) => api.savedPosts(character.id, b),
   }[kind];
@@ -49,6 +50,12 @@ function PostsTab({ kind, character }) {
       return (
         <EmptyState icon={<Camera size={44} strokeWidth={1.3} />} title="Ainda sem publicações">
           As fotos que @{character.handle} publicar aparecem aqui.
+        </EmptyState>
+      );
+    if (kind === 'reels')
+      return (
+        <EmptyState icon={<Clapperboard size={44} strokeWidth={1.3} />} title="Nenhum reel">
+          Os vídeos que @{character.handle} publicar sozinhos aparecem aqui.
         </EmptyState>
       );
     if (kind === 'tagged')
@@ -198,6 +205,7 @@ export default function Profile() {
       <PullToRefresh
         onRefresh={async () => {
           pageCache.delete(`grid:${p.id}`);
+          pageCache.delete(`reels:${p.id}`);
           pageCache.delete(`tagged:${p.id}`);
           pageCache.delete(`saved:${p.id}`);
           await reload();
@@ -294,6 +302,11 @@ export default function Profile() {
           <button type="button" role="tab" aria-selected={tab === 'grid'} className={tab === 'grid' ? 'is-active' : ''} onClick={() => setTab('grid')} aria-label="Publicações">
             <Grid3x3 size={24} strokeWidth={tab === 'grid' ? 2.2 : 1.6} />
           </button>
+          {can('videos') && (
+            <button type="button" role="tab" aria-selected={tab === 'reels'} className={tab === 'reels' ? 'is-active' : ''} onClick={() => setTab('reels')} aria-label="Reels">
+              <Clapperboard size={24} strokeWidth={tab === 'reels' ? 2.2 : 1.6} />
+            </button>
+          )}
           <button type="button" role="tab" aria-selected={tab === 'tagged'} className={tab === 'tagged' ? 'is-active' : ''} onClick={() => setTab('tagged')} aria-label="Marcados">
             <SquareUserRound size={24} strokeWidth={tab === 'tagged' ? 2.2 : 1.6} />
           </button>

@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { Copy, Heart, MessageCircle } from 'lucide-react';
+import { Copy, Heart, MessageCircle, Clapperboard } from 'lucide-react';
 import { mediaUrl } from '../lib/supabase';
 import { count } from '../lib/format';
 import { fadeIn } from '../lib/fade';
@@ -8,12 +8,18 @@ export default function PostGrid({ posts }) {
   return (
     <div className="grid">
       {posts.map((p) => (
-        <Link key={p.id} to={`/p/${p.id}`} className="grid__cell" aria-label="Abrir publicação">
+        <Link key={p.id} to={`/p/${p.id}`} className="grid__cell" aria-label={p.video && p.media_count <= 1 ? 'Abrir reel' : 'Abrir publicação'}>
           {p.thumb && <img {...fadeIn} src={mediaUrl(p.thumb)} alt="" loading="lazy" decoding="async" draggable="false" />}
-          {p.media_count > 1 && (
+          {p.media_count > 1 ? (
             <span className="grid__multi" aria-hidden="true">
               <Copy size={16} fill="currentColor" strokeWidth={1.5} />
             </span>
+          ) : (
+            p.video && (
+              <span className="grid__multi" aria-hidden="true">
+                <Clapperboard size={17} strokeWidth={2} />
+              </span>
+            )
           )}
           <span className="grid__hover" aria-hidden="true">
             <span>
